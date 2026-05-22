@@ -52,7 +52,7 @@ local function traceback(err)
 end
 
 local filePath = process.args[1]
-assert(filePath, "usage: lune run src/test.lua <file.lua>")
+assert(filePath, "usage: lune run lune-test <manifest.lua>")
 
 filePath = normalizeFilesystemPath(filePath)
 
@@ -464,6 +464,18 @@ local function withTraceback(err)
     return debug.traceback(tostring(err), 2)
 end
 
+local function caseArgsFromValue(caseValue)
+	if caseValue == nil then
+		return {}
+	end
+
+	if type(caseValue) == "table" then
+		return caseValue
+	end
+
+	return { caseValue }
+end
+
 local out = ""
 totalSuccess = 0
 total = 0
@@ -480,7 +492,8 @@ for testName, testData in pairs(manifest.tests) do
 
 		local success, result = xpcall(function()
 			local module = if testData.module:sub(1, 1) == "." then sandbox.loadFileModule(modulePath) else sandbox.require(testData.module)
-			return module[caseName]()
+			local caseArgs = caseArgsFromValue(deps)
+			return module[caseName](unpack(caseArgs))
 		end, withTraceback)
 		sandbox.uninstall()
 		

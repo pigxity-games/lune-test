@@ -22,6 +22,7 @@ return {
 				moduleStateStartsFreshPerCase2 = {},
 				serviceTreeStartsFreshPerCase1 = {},
 				serviceTreeStartsFreshPerCase2 = {},
+				caseArgumentsArePassedThrough = { 7, 3, 4 },
 			}
 		}
 	},

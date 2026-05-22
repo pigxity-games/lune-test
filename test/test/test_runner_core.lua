@@ -39,4 +39,8 @@ function m.serviceTreeStartsFreshPerCase2()
 	assert(ReplicatedStorage:FindFirstChild("TransientFolder") == nil)
 end
 
+function m.caseArgumentsArePassedThrough(expectedTotal: number, a: number, b: number)
+	assert(expectedTotal == a + b)
+end
+
 return m
