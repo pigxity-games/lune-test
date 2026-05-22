@@ -5,6 +5,8 @@ local m = {}
 function m.mountsServicesIntoGlobals()
 	assert(game:GetService("ReplicatedStorage") == ReplicatedStorage)
 	assert(game:GetService("ServerScriptService") == ServerScriptService)
+	assert(game:GetService("Players") == Players)
+	assert(Players.LocalPlayer.PlayerScripts.ClientModule1 ~= nil)
 	assert(ReplicatedStorage.UtilModule ~= nil)
 	assert(ServerScriptService.SomeModule ~= nil)
 end

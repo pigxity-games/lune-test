@@ -3,7 +3,8 @@ return {
 		test_module_requires = {
 			module = "./test_module_requires",
 			cases = {
-				addFunctionAddsTwoNumbers = {},
+				replicatedStorageAndRelativeRequires = {},
+				playerScriptsClientRequires = {},
 			},
 		},
 		test_sandboxing = {
@@ -55,5 +56,6 @@ return {
 	mounts = {
 		ReplicatedStorage = "test/src/shared",
 		ServerScriptService = "test/src/server",
+		PlayerScripts = "test/src/client",
 	},
 }

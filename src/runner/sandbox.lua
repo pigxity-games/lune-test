@@ -12,6 +12,13 @@ local function traceback(err)
 	return debug.traceback(tostring(err), 2)
 end
 
+local specialMounts = {
+	PlayerScripts = {
+		serviceName = "Players",
+		path = { "LocalPlayer", "PlayerScripts" },
+	},
+}
+
 local function createInstance(name: string, className: string, parent)
 	local instance = fake.Instance.new(className)
 	instance.Name = name
@@ -117,21 +124,52 @@ function sandboxModule.create(manifest)
 		return service
 	end
 
-	local function mountService(serviceName: string, moduleRoot: string)
-		local service = createInstance(serviceName, serviceName, game)
+	local function ensureService(serviceName: string)
+		local service = services[serviceName]
 
-		local mount = {
-			service = service,
-			root = paths.normalizeRequirePath(moduleRoot),
-		}
+		if service ~= nil then
+			return service
+		end
 
-		table.insert(mounts, mount)
-		mountByInstance[service] = mount
+		service = createInstance(serviceName, serviceName, game)
 		service._childResolver = function(parent, name: string)
 			return createChild(parent, name)
 		end
 
+		services[serviceName] = service
+
 		return service
+	end
+
+	local function registerMount(rootInstance, moduleRoot: string)
+		local mount = {
+			service = rootInstance,
+			root = paths.normalizeRequirePath(moduleRoot),
+		}
+
+		table.insert(mounts, mount)
+		mountByInstance[rootInstance] = mount
+		rootInstance._childResolver = function(parent, name: string)
+			return createChild(parent, name)
+		end
+
+		return mount
+	end
+
+	local function mountService(serviceName: string, moduleRoot: string)
+		return registerMount(ensureService(serviceName), moduleRoot)
+	end
+
+	local function mountSpecialService(serviceName: string, moduleRoot: string, mountConfig)
+		local node = ensureService(mountConfig.serviceName)
+
+		for _, segment in ipairs(mountConfig.path) do
+			node = createChild(node, segment)
+		end
+
+		node.ClassName = serviceName
+
+		registerMount(node, moduleRoot)
 	end
 
 	local function findMountForPath(modulePath: string)
@@ -294,7 +332,13 @@ function sandboxModule.create(manifest)
 	end
 
 	for serviceName, moduleRoot in pairs(manifest.mounts) do
-		services[serviceName] = mountService(serviceName, moduleRoot)
+		local specialMount = specialMounts[serviceName]
+
+		if specialMount ~= nil then
+			mountSpecialService(serviceName, moduleRoot, specialMount)
+		else
+			mountService(serviceName, moduleRoot)
+		end
 	end
 
 	local function install()
