@@ -31,6 +31,25 @@ return {
 					return "lazy"
 				end,
 			}
+		},
+		test_fake_classes = {
+			module = "./test_fake_classes",
+			cases = {
+				vector2DefaultsAndConstants = {},
+				vector2ArithmeticAndHelpers = {},
+				vector3ArithmeticAndCrossProduct = {},
+				vector3HelpersAndConstants = {},
+				udimArithmetic = {},
+				udim2ConstructorsAndLerp = {},
+				color3RgbHexAndClamp = {},
+				color3HsvRoundTripAndLerp = {},
+				cframeConstructionAndOperators = {},
+				cframeOrientationAndLookAt = {},
+				brickColorConstructorsAndEquality = {},
+				brickColorPaletteClosestAndRandom = {},
+				instanceHierarchyAndLookup = {},
+				instanceRenameWaitAndDestroy = {},
+			}
 		}
 	},
 	mounts = {

@@ -56,6 +56,14 @@ end
 local InstanceMetatable = {}
 
 function InstanceMetatable.__index(self, key)
+	if key == "Name" then
+		return rawget(self, "_name")
+	end
+
+	if key == "Parent" then
+		return rawget(self, "_parent")
+	end
+
 	local method = InstanceMethods[key]
 
 	if method ~= nil then
@@ -81,16 +89,16 @@ end
 
 function InstanceMetatable.__newindex(self, key, value)
 	if key == "Parent" then
-		local oldParent = rawget(self, "Parent")
-		local name = rawget(self, "Name")
+		local oldParent = rawget(self, "_parent")
+		local name = rawget(self, "_name")
 
 		if oldParent ~= nil and name ~= nil then
 			oldParent._children[name] = nil
 		end
 
-		rawset(self, "Parent", value)
+		rawset(self, "_parent", value)
 
-		if value ~= nil then
+		if value ~= nil and name ~= nil then
 			value._children[name] = self
 		end
 
@@ -98,14 +106,14 @@ function InstanceMetatable.__newindex(self, key, value)
 	end
 
 	if key == "Name" then
-		local parent = rawget(self, "Parent")
-		local oldName = rawget(self, "Name")
+		local parent = rawget(self, "_parent")
+		local oldName = rawget(self, "_name")
 
 		if parent ~= nil and oldName ~= nil then
 			parent._children[oldName] = nil
 		end
 
-		rawset(self, "Name", value)
+		rawset(self, "_name", value)
 
 		if parent ~= nil then
 			parent._children[value] = self
@@ -119,10 +127,9 @@ end
 
 function Instance.new(className: string, parent)
 	local self = {
-		Name = className,
+		_name = className,
+		_parent = nil,
 		ClassName = className,
-		Parent = nil,
-
 		_children = {},
 		_isFakeRobloxInstance = true,
 	}

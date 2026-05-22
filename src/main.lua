@@ -1,5 +1,6 @@
 local fs = require("@lune/fs")
 local process = require("@lune/process")
+local stdio = require("@lune/stdio")
 
 local Instance = require("./fake/Instance")
 local Color3 = require("./fake/Color3")
@@ -481,10 +482,20 @@ local function caseArgsFromValue(caseValue)
 	return { caseValue }
 end
 
-local out = ""
-totalSuccess = 0
-total = 0
+local errors = ""
+local summary = ""
+
+local totalSuccess = 0
+local total = 0
 local matchedSuiteCount = 0
+
+local function boolToColor(success: boolean)
+	return if success then "green" else "red"
+end
+
+local function colorText(color: string, text: string)
+	return `{stdio.color(color)}{text}{stdio.color("reset")}`
+end
 
 for testName, testData in pairs(manifest.tests) do
 	if requestedSuiteName == nil or requestedSuiteName == testName then
@@ -506,14 +517,17 @@ for testName, testData in pairs(manifest.tests) do
 			sandbox.uninstall()
 			
 			local text = if success then "PASS" else "FAIL"
-			print(`- [{text}]: {caseName}`)
+			local color = boolToColor(success)
+			print("- " .. colorText(color, `[{text}]: {caseName}`))
 
 			if not success then
-				out = out .. "'" .. caseName .. "'" .. "\nTRACEBACK:\n" .. result
+				summary = summary .. testName .. "." .. caseName
+				errors = errors .. "'" .. colorText("blue", caseName) .. "'" .. colorText("red", "\nTRACEBACK:\n" .. result)
 			else
 				totalSuccess += 1
 			end
 		end
+		print("")
 	end
 end
 
@@ -521,8 +535,17 @@ if requestedSuiteName ~= nil and matchedSuiteCount == 0 then
 	error(`unknown test suite: {requestedSuiteName}`, 0)
 end
 
-if out ~= "" then
-	print("\nCOLLECTED ERRORS:\n")
-	print(out)
+if errors ~= "" then
+	print("COLLECTED ERRORS:\n")
+	print(errors)
 end
-print(`\nTEST RESULTS: {totalSuccess}/{total} PASSED\n`)
+
+if summary ~= "" then
+	print("FAILED TESTS:\n")
+	print(summary)
+end
+
+success = totalSuccess == total
+
+print("---")
+print("\nTEST RESULTS: " .. colorText(boolToColor(success), `{totalSuccess}/{total}`) .. "\n")
