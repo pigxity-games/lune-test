@@ -1,7 +1,7 @@
 local m = {}
 
 function m.replicatedStorageAndRelativeRequires()
-	local SomeModule = require("@src/server/SomeModule")
+	local SomeModule = require("./src/server/SomeModule")
 	local add = SomeModule.add
 
 	_G.SomeGlobal = "Hello World"
@@ -11,7 +11,7 @@ function m.replicatedStorageAndRelativeRequires()
 end
 
 function m.playerScriptsClientRequires()
-	local ClientModule1 = require("@src/client/ClientModule1")
+	local ClientModule1 = require("./src/client/ClientModule1")
 	local multiply = ClientModule1.multiply
 
 	assert(multiply(2, 2) == 4, "2*2 is not 4")

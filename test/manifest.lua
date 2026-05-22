@@ -1,61 +1,6 @@
 return {
-	tests = {
-		test_module_requires = {
-			module = "./test_module_requires",
-			cases = {
-				replicatedStorageAndRelativeRequires = {},
-				playerScriptsClientRequires = {},
-			},
-		},
-		test_sandboxing = {
-			module = "./test_sandboxing",
-			cases = {
-				sandboxedGlobalState1 = {},
-				sandboxedGlobalState2 = {},
-			},
-		},
-		test_runner_core = {
-			module = "./test_runner_core",
-			cases = {
-				mountsServicesIntoGlobals = {},
-				instanceRequireResolvesNestedModuleScripts = {},
-				moduleStateStartsFreshPerCase1 = {},
-				moduleStateStartsFreshPerCase2 = {},
-				serviceTreeStartsFreshPerCase1 = {},
-				serviceTreeStartsFreshPerCase2 = {},
-				caseArgumentsArePassedThrough = { 7, 3, 4 },
-				singleLiteralCaseArgumentIsPassedThrough = "hello",
-				lazyTableCaseArgumentsArePassedThrough = function()
-					return { 9, 4, 5 }
-				end,
-				lazySingleCaseArgumentIsPassedThrough = function()
-					return "lazy"
-				end,
-			},
-		},
-		test_fake_classes = {
-			module = "./test_fake_classes",
-			cases = {
-				vector2DefaultsAndConstants = {},
-				vector2ArithmeticAndHelpers = {},
-				vector3ArithmeticAndCrossProduct = {},
-				vector3HelpersAndConstants = {},
-				udimArithmetic = {},
-				udim2ConstructorsAndLerp = {},
-				color3RgbHexAndClamp = {},
-				color3HsvRoundTripAndLerp = {},
-				cframeConstructionAndOperators = {},
-				cframeOrientationAndLookAt = {},
-				brickColorConstructorsAndEquality = {},
-				brickColorPaletteClosestAndRandom = {},
-				instanceHierarchyAndLookup = {},
-				instanceRenameWaitAndDestroy = {},
-			},
-		},
-	},
-	mounts = {
-		ReplicatedStorage = "test/src/shared",
-		ServerScriptService = "test/src/server",
-		PlayerScripts = "test/src/client",
+	childManifests = {
+		"./fixture-main/manifest",
+		"./multi-workspace/manifest",
 	},
 }

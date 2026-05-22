@@ -1,4 +1,4 @@
-local StatefulModule = require("@src/shared/StatefulModule")
+local StatefulModule = require("./src/shared/StatefulModule")
 
 local m = {}
 

@@ -1,4 +1,4 @@
-local SomeModule = require("@src/server/SomeModule")
+local SomeModule = require("./src/server/SomeModule")
 local add = SomeModule.add
 
 local m = {}
