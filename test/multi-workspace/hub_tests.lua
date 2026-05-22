@@ -1,12 +1,14 @@
+local helpers = require("./test_helpers")
+
 local m = {}
 
 function m.workspaceHubRequires()
 	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local ServerScriptService = game:GetService("ServerScriptService")
 
-	assert(ServerScriptService.Game.SomeGameModule == nil)
+	assert(helpers.getPath(ServerScriptService, "Game", "SomeGameModule") == nil)
 	assert(ReplicatedStorage.Common.CommonModule ~= nil)
-	assert(ServerScriptService.Utils.SharedGameModule == nil)
+	assert(helpers.getPath(ServerScriptService, "Utils", "SharedGameModule") == nil)
 
 	local SomeModule = require(ServerScriptService.SomeHubModule)
 	local multiply = SomeModule.multiply

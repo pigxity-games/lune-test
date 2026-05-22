@@ -54,8 +54,8 @@ return {
 		},
 	},
 	mounts = {
-		ReplicatedStorage = "test/src/shared",
-		ServerScriptService = "test/src/server",
-		PlayerScripts = "test/src/client",
+		ReplicatedStorage = "src/shared", --supports both ./ and no prefix
+		ServerScriptService = "./src/server",
+		PlayerScripts = "./src/client",
 	},
 }

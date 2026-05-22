@@ -39,6 +39,7 @@ local function createChild(parent, name: string, className: string?)
 
 	child = createInstance(name, className or "Folder", parent)
 	child._childResolver = parent._childResolver
+	child._moduleTree = if parent._moduleTree ~= nil then parent._moduleTree.children[name] else nil
 
 	return child
 end
@@ -47,7 +48,7 @@ local function startsWithPath(path: string, prefix: string): boolean
 	return path == prefix or path:sub(1, #prefix + 1) == prefix .. "/"
 end
 
-local function resolveAliasedModuleToFilePath(manifest, modulePath: string): string?
+local function resolveAliasedModuleToFilePath(mounts, modulePath: string): string?
 	local aliasName, remainder = modulePath:match("^@([^/]+)(.*)$")
 
 	if aliasName == nil then
@@ -63,8 +64,8 @@ local function resolveAliasedModuleToFilePath(manifest, modulePath: string): str
 	local firstSegment, trailingPath = remainder:match("^/([^/]+)(.*)$")
 
 	if firstSegment ~= nil then
-		for _, moduleRoot in pairs(manifest.mounts) do
-			local normalizedRoot = paths.normalizeFilesystemPath(moduleRoot)
+		for _, mount in ipairs(mounts) do
+			local normalizedRoot = paths.normalizeFilesystemPath(mount.moduleRoot)
 			local rootName = normalizedRoot:match("([^/]+)$")
 
 			if rootName == firstSegment then
@@ -80,18 +81,18 @@ local function resolveAliasedModuleToFilePath(manifest, modulePath: string): str
 	return nil
 end
 
-local function moduleFilePathFromRequirePath(manifest, modulePath: string): string?
+local function moduleFilePathFromRequirePath(mounts, modulePath: string): string?
 	if modulePath:sub(1, 6) == "@lune/" then
 		return nil
 	end
 
 	if modulePath:sub(1, 1) == "@" then
-		return resolveAliasedModuleToFilePath(manifest, modulePath)
+		return resolveAliasedModuleToFilePath(mounts, modulePath)
 	end
 
 	local candidatePath = paths.normalizeFilesystemPath(modulePath)
 
-	if modulePath:sub(1, 1) == "." or modulePath:match("^/") or modulePath:match("^%a:[/]") then
+	if modulePath:sub(1, 1) == "." or paths.isAbsoluteFilesystemPath(modulePath) then
 		return candidatePath
 	end
 
@@ -102,7 +103,7 @@ local function moduleFilePathFromRequirePath(manifest, modulePath: string): stri
 	return nil
 end
 
-function sandboxModule.create(manifest)
+function sandboxModule.create(manifestMounts)
 	local fileModuleCache = {}
 	local mounts = {}
 	local mountByInstance = {}
@@ -132,44 +133,106 @@ function sandboxModule.create(manifest)
 		end
 
 		service = createInstance(serviceName, serviceName, game)
-		service._childResolver = function(parent, name: string)
-			return createChild(parent, name)
-		end
 
 		services[serviceName] = service
 
 		return service
 	end
 
+	local function buildModuleTree(moduleRoot: string)
+		local tree = {
+			children = {},
+		}
+
+		if not fs.isDir(moduleRoot) then
+			return tree
+		end
+
+		for _, entryName in ipairs(fs.readDir(moduleRoot)) do
+			local entryPath = paths.normalizeFilesystemPath(paths.pathJoin(moduleRoot, entryName))
+			local moduleName = entryName:gsub("%.lua$", "")
+			local childTree = tree.children[moduleName]
+
+			if childTree == nil then
+				childTree = {
+					children = {},
+				}
+				tree.children[moduleName] = childTree
+			end
+
+			if fs.isDir(entryPath) then
+				childTree.className = childTree.className or "Folder"
+				childTree.children = buildModuleTree(entryPath).children
+			elseif fs.isFile(entryPath) and entryName:sub(-4) == ".lua" then
+				childTree.className = "ModuleScript"
+			end
+		end
+
+		return tree
+	end
+
+	local function resolveMountedChild(parent, name: string)
+		local moduleTree = parent._moduleTree
+
+		if moduleTree == nil then
+			return nil
+		end
+
+		local childTree = moduleTree.children[name]
+
+		if childTree == nil then
+			return nil
+		end
+
+		local className = childTree.className or "Folder"
+		return createChild(parent, name, className)
+	end
+
 	local function registerMount(rootInstance, moduleRoot: string)
+		local normalizedModuleRoot = paths.normalizeFilesystemPath(moduleRoot)
 		local mount = {
 			service = rootInstance,
-			root = paths.normalizeRequirePath(moduleRoot),
+			root = paths.normalizeRequirePath(normalizedModuleRoot),
+			moduleRoot = normalizedModuleRoot,
 		}
 
 		table.insert(mounts, mount)
 		mountByInstance[rootInstance] = mount
-		rootInstance._childResolver = function(parent, name: string)
-			return createChild(parent, name)
-		end
+		rootInstance._moduleTree = buildModuleTree(normalizedModuleRoot)
+		rootInstance._childResolver = resolveMountedChild
 
 		return mount
 	end
 
-	local function mountService(serviceName: string, moduleRoot: string)
-		return registerMount(ensureService(serviceName), moduleRoot)
-	end
+	local function ensureMountNode(mountPath: string)
+		local segments = paths.splitPath(mountPath)
+		assert(#segments > 0, "mount path must not be empty")
 
-	local function mountSpecialService(serviceName: string, moduleRoot: string, mountConfig)
-		local node = ensureService(mountConfig.serviceName)
+		local firstSegment = table.remove(segments, 1)
+		local specialMount = specialMounts[mountPath]
 
-		for _, segment in ipairs(mountConfig.path) do
+		if specialMount ~= nil then
+			local node = ensureService(specialMount.serviceName)
+
+			for _, segment in ipairs(specialMount.path) do
+				node = createChild(node, segment)
+			end
+
+			node.ClassName = firstSegment
+			return node
+		end
+
+		local node = ensureService(firstSegment)
+
+		for _, segment in ipairs(segments) do
 			node = createChild(node, segment)
 		end
 
-		node.ClassName = serviceName
+		return node
+	end
 
-		registerMount(node, moduleRoot)
+	local function mountService(mountPath: string, moduleRoot: string)
+		return registerMount(ensureMountNode(mountPath), moduleRoot)
 	end
 
 	local function findMountForPath(modulePath: string)
@@ -294,7 +357,7 @@ function sandboxModule.create(manifest)
 	end
 
 	local function requireWithScript(modulePath: string, scriptInstance)
-		local fileModulePath = moduleFilePathFromRequirePath(manifest, modulePath)
+		local fileModulePath = moduleFilePathFromRequirePath(manifestMounts, modulePath)
 		local loader = realRequire
 		local loadTarget = modulePath
 
@@ -331,14 +394,8 @@ function sandboxModule.create(manifest)
 		error("Cannot require value of type " .. typeof(target))
 	end
 
-	for serviceName, moduleRoot in pairs(manifest.mounts) do
-		local specialMount = specialMounts[serviceName]
-
-		if specialMount ~= nil then
-			mountSpecialService(serviceName, moduleRoot, specialMount)
-		else
-			mountService(serviceName, moduleRoot)
-		end
+	for _, mountData in ipairs(manifestMounts) do
+		mountService(mountData.mountPath, mountData.moduleRoot)
 	end
 
 	local function install()

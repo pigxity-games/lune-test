@@ -2,6 +2,10 @@ local process = require("@lune/process")
 
 local paths = {}
 
+function paths.isAbsoluteFilesystemPath(path: string): boolean
+	return path:match("^/") ~= nil or path:match("^%a:[/]") ~= nil
+end
+
 function paths.pathJoin(...: string): string
 	local parts = { ... }
 	local path = table.concat(parts, "/")
@@ -23,7 +27,7 @@ end
 function paths.normalizeFilesystemPath(path: string): string
 	path = path:gsub("\\", "/")
 
-	if not path:match("^/") and not path:match("^%a:[/]") then
+	if not paths.isAbsoluteFilesystemPath(path) then
 		path = paths.pathJoin(process.cwd, path)
 	end
 
@@ -36,6 +40,14 @@ function paths.resolvePathFromFile(baseFilePath: string, targetPath: string): st
 	end
 
 	return targetPath
+end
+
+function paths.resolveFilesystemPathFromFile(baseFilePath: string, targetPath: string): string
+	if paths.isAbsoluteFilesystemPath(targetPath) then
+		return paths.normalizeFilesystemPath(targetPath)
+	end
+
+	return paths.normalizeFilesystemPath(paths.pathJoin(paths.dirname(baseFilePath), targetPath))
 end
 
 function paths.splitPath(path: string): { string }

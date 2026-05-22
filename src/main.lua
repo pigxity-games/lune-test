@@ -13,13 +13,13 @@ local requestedSuiteName = process.args[2]
 
 assert(manifestPath, "usage: lune run lune-test <manifest.lua> [suite-name]")
 
-local ok, manifestOrErr, normalizedManifestPath = pcall(manifestRunner.loadManifest, manifestPath)
+local ok, manifestOrErr = pcall(manifestRunner.loadManifest, manifestPath)
 
 if not ok then
 	fail(manifestOrErr)
 end
 
-local runOk, runErr = pcall(runner.runManifest, manifestOrErr, normalizedManifestPath, requestedSuiteName)
+local runOk, runErr = pcall(runner.runManifest, manifestOrErr, requestedSuiteName)
 
 if not runOk then
 	fail(runErr)

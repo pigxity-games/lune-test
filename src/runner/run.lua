@@ -1,5 +1,4 @@
 local caseArgs = require("./case_args")
-local paths = require("./paths")
 local reporter = require("./reporter")
 local sandbox = require("./sandbox")
 
@@ -9,24 +8,29 @@ local function withTraceback(err)
 	return debug.traceback(tostring(err), 2)
 end
 
-function runner.runManifest(manifest, manifestFilePath: string, requestedSuiteName: string?)
+function runner.runManifest(manifest, requestedSuiteName: string?)
 	local output = reporter.create()
 
 	for testName, testData in pairs(manifest.tests) do
 		if requestedSuiteName == nil or requestedSuiteName == testName then
 			output.beginSuite(testName)
 
-			local modulePath = paths.resolvePathFromFile(manifestFilePath, testData.module)
-
 			for caseName, deps in pairs(testData.cases) do
-				local caseSandbox = sandbox.create(manifest)
+				local caseSandbox = sandbox.create(testData.mounts)
 				caseSandbox.install()
 
 				local success, result = xpcall(function()
-					local module = if testData.module:sub(1, 1) == "."
-						then caseSandbox.loadFileModule(modulePath)
+					local oldCurrentFilePath = caseSandbox.globals.__currentFilePath
+					caseSandbox.globals.__currentFilePath = if testData.moduleIsFile then testData.module else nil
+
+					local module = if testData.moduleIsFile
+						then caseSandbox.loadFileModule(testData.module)
 						else caseSandbox.require(testData.module)
-					return module[caseName](unpack(caseArgs.fromValue(deps)))
+					local caseResult = module[caseName](unpack(caseArgs.fromValue(deps)))
+
+					caseSandbox.globals.__currentFilePath = oldCurrentFilePath
+
+					return caseResult
 				end, withTraceback)
 
 				caseSandbox.uninstall()

@@ -7,12 +7,12 @@ return {
 		game = {
 			mounts = {
 				ReplicatedStorage = {
-					_root = "src/game/shared",
-					Common = "src/common/shared",
+					_root = "./src/game/shared",
+					Common = "./src/common/shared",
 				},
 				ServerScriptService = {
-					Game = "src/game/server",
-					Utils = "src/game/utils",
+					Game = "./src/game/server",
+					Utils = "./src/game/utils",
 				},
 			},
 		},
