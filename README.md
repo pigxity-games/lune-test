@@ -72,5 +72,5 @@ Each `cases` value is passed to the named test function as positional arguments.
 The project contains unit tests under `test/`. Run them with the test runner itself.
 
 ```sh
-lune run src/main.lua test/test/manifest.lua
+lune run src/main.lua test/manifest.lua
 ```

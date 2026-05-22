@@ -1,0 +1,16 @@
+{
+	"files.eol": "\n",
+	"[luau]": {
+        "editor.defaultFormatter": "JohnnyMorganz.stylua",
+		"editor.formatOnSave": true
+    },
+    "[lua]": {
+        "editor.defaultFormatter": "JohnnyMorganz.stylua",
+		"editor.formatOnSave": true
+    },
+    "luau-lsp.types.definitionFiles": {
+        "@global-types": "types.d.luau"
+    },
+    "luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
+    "stylua.targetReleaseVersion": "latest",
+}

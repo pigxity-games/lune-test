@@ -18,10 +18,7 @@ function Vector2:Dot(other)
 end
 
 function Vector2:Lerp(other, alpha: number)
-	return Vector2.new(
-		self.X + (other.X - self.X) * alpha,
-		self.Y + (other.Y - self.Y) * alpha
-	)
+	return Vector2.new(self.X + (other.X - self.X) * alpha, self.Y + (other.Y - self.Y) * alpha)
 end
 
 function Vector2.__add(a, b)

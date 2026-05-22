@@ -3,15 +3,15 @@ return {
 		test_module_requires = {
 			module = "./test_module_requires",
 			cases = {
-				addFunctionAddsTwoNumbers = {}
-			}
+				addFunctionAddsTwoNumbers = {},
+			},
 		},
 		test_sandboxing = {
 			module = "./test_sandboxing",
 			cases = {
 				sandboxedGlobalState1 = {},
-				sandboxedGlobalState2 = {}
-			}
+				sandboxedGlobalState2 = {},
+			},
 		},
 		test_runner_core = {
 			module = "./test_runner_core",
@@ -30,7 +30,7 @@ return {
 				lazySingleCaseArgumentIsPassedThrough = function()
 					return "lazy"
 				end,
-			}
+			},
 		},
 		test_fake_classes = {
 			module = "./test_fake_classes",
@@ -49,11 +49,11 @@ return {
 				brickColorPaletteClosestAndRandom = {},
 				instanceHierarchyAndLookup = {},
 				instanceRenameWaitAndDestroy = {},
-			}
-		}
+			},
+		},
 	},
 	mounts = {
 		ReplicatedStorage = "test/src/shared",
-		ServerScriptService = "test/src/server"
-	}
+		ServerScriptService = "test/src/server",
+	},
 }

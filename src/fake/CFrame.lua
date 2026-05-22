@@ -5,9 +5,15 @@ CFrame.__index = CFrame
 
 local function identityRotation()
 	return {
-		1, 0, 0,
-		0, 1, 0,
-		0, 0, 1,
+		1,
+		0,
+		0,
+		0,
+		1,
+		0,
+		0,
+		0,
+		1,
 	}
 end
 

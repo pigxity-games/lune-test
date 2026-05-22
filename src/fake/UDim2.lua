@@ -3,12 +3,7 @@ local UDim = require("./UDim")
 local UDim2 = {}
 UDim2.__index = UDim2
 
-function UDim2.new(
-	xScale: number?,
-	xOffset: number?,
-	yScale: number?,
-	yOffset: number?
-)
+function UDim2.new(xScale: number?, xOffset: number?, yScale: number?, yOffset: number?)
 	return setmetatable({
 		X = UDim.new(xScale or 0, xOffset or 0),
 		Y = UDim.new(yScale or 0, yOffset or 0),
@@ -33,21 +28,11 @@ function UDim2:Lerp(other, alpha: number)
 end
 
 function UDim2.__add(a, b)
-	return UDim2.new(
-		a.X.Scale + b.X.Scale,
-		a.X.Offset + b.X.Offset,
-		a.Y.Scale + b.Y.Scale,
-		a.Y.Offset + b.Y.Offset
-	)
+	return UDim2.new(a.X.Scale + b.X.Scale, a.X.Offset + b.X.Offset, a.Y.Scale + b.Y.Scale, a.Y.Offset + b.Y.Offset)
 end
 
 function UDim2.__sub(a, b)
-	return UDim2.new(
-		a.X.Scale - b.X.Scale,
-		a.X.Offset - b.X.Offset,
-		a.Y.Scale - b.Y.Scale,
-		a.Y.Offset - b.Y.Offset
-	)
+	return UDim2.new(a.X.Scale - b.X.Scale, a.X.Offset - b.X.Offset, a.Y.Scale - b.Y.Scale, a.Y.Offset - b.Y.Offset)
 end
 
 function UDim2.__eq(a, b)

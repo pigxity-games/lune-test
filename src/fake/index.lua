@@ -1,0 +1,10 @@
+return {
+	Instance = require("./Instance"),
+	Color3 = require("./Color3"),
+	Vector2 = require("./Vector2"),
+	Vector3 = require("./Vector3"),
+	CFrame = require("./CFrame"),
+	UDim = require("./UDim"),
+	UDim2 = require("./UDim2"),
+	BrickColor = require("./BrickColor"),
+}
