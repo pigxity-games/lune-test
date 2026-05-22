@@ -14,11 +14,17 @@ darklua process src/main.lua dist/lune-test.luau
 ```
 
 ## Usage
-The script accepts one argument: the path to a `manifest.lua` file.
+The script accepts a path to a `manifest.lua` file and an optional test suite name.
 
 You may run the script as follows:
 ```sh
 lune run lune-test test/manifest.lua
+```
+
+To run just one suite from `manifest.tests`, pass its name as the second argument:
+
+```sh
+lune run lune-test test/manifest.lua test_runner_core
 ```
 
 `manifest` should be a lua file which contains a table such as the following:
@@ -29,7 +35,14 @@ return {
 		test_1 = {
 			module = "./test_1",
 			cases = {
-				testCaseFunction1 = { "hello", 123 }
+				testCaseFunction1 = { "hello", 123 },
+				testCaseFunction2 = "single value",
+				testCaseFunction3 = function()
+					return { true, "lazy args" }
+				end,
+				testCaseFunction4 = function()
+					return "lazy single value"
+				end,
 			}
 		},
 		test_2 = {
@@ -47,8 +60,11 @@ return {
 }
 ```
 
-Each `cases` value is passed to the named test function as positional arguments. For example,
-`testCaseFunction1 = { "hello", 123 }` calls `testCaseFunction1("hello", 123)`.
+Each `cases` value is passed to the named test function as positional arguments.
+
+- A table value like `testCaseFunction1 = { "hello", 123 }` calls `testCaseFunction1("hello", 123)`.
+- A single literal value like `testCaseFunction2 = "single value"` calls `testCaseFunction2("single value")`.
+- A function value is called lazily at test time, and its return value is normalized the same way.
 
 
 

@@ -52,7 +52,8 @@ local function traceback(err)
 end
 
 local filePath = process.args[1]
-assert(filePath, "usage: lune run lune-test <manifest.lua>")
+local requestedSuiteName = process.args[2]
+assert(filePath, "usage: lune run lune-test <manifest.lua> [suite-name]")
 
 filePath = normalizeFilesystemPath(filePath)
 
@@ -465,6 +466,10 @@ local function withTraceback(err)
 end
 
 local function caseArgsFromValue(caseValue)
+	if type(caseValue) == "function" then
+		caseValue = caseValue()
+	end
+
 	if caseValue == nil then
 		return {}
 	end
@@ -479,33 +484,41 @@ end
 local out = ""
 totalSuccess = 0
 total = 0
+local matchedSuiteCount = 0
 
 for testName, testData in pairs(manifest.tests) do
-	print(`[TEST]: {testName}`)
-	
-	local modulePath = resolvePathFromFile(filePath, testData.module)
-	
-	for caseName, deps in pairs(testData.cases) do
-		total += 1
-		local sandbox = createSandbox()
-		sandbox.install()
-
-		local success, result = xpcall(function()
-			local module = if testData.module:sub(1, 1) == "." then sandbox.loadFileModule(modulePath) else sandbox.require(testData.module)
-			local caseArgs = caseArgsFromValue(deps)
-			return module[caseName](unpack(caseArgs))
-		end, withTraceback)
-		sandbox.uninstall()
+	if requestedSuiteName == nil or requestedSuiteName == testName then
+		matchedSuiteCount += 1
+		print(`[TEST]: {testName}`)
 		
-		local text = if success then "PASS" else "FAIL"
-		print(`- [{text}]: {caseName}`)
+		local modulePath = resolvePathFromFile(filePath, testData.module)
+		
+		for caseName, deps in pairs(testData.cases) do
+			total += 1
+			local sandbox = createSandbox()
+			sandbox.install()
 
-		if not success then
-			out = out .. "'" .. caseName .. "'" .. "\nTRACEBACK:\n" .. result
-		else
-			totalSuccess += 1
+			local success, result = xpcall(function()
+				local module = if testData.module:sub(1, 1) == "." then sandbox.loadFileModule(modulePath) else sandbox.require(testData.module)
+				local caseArgs = caseArgsFromValue(deps)
+				return module[caseName](unpack(caseArgs))
+			end, withTraceback)
+			sandbox.uninstall()
+			
+			local text = if success then "PASS" else "FAIL"
+			print(`- [{text}]: {caseName}`)
+
+			if not success then
+				out = out .. "'" .. caseName .. "'" .. "\nTRACEBACK:\n" .. result
+			else
+				totalSuccess += 1
+			end
 		end
 	end
+end
+
+if requestedSuiteName ~= nil and matchedSuiteCount == 0 then
+	error(`unknown test suite: {requestedSuiteName}`, 0)
 end
 
 if out ~= "" then

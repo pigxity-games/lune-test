@@ -43,4 +43,16 @@ function m.caseArgumentsArePassedThrough(expectedTotal: number, a: number, b: nu
 	assert(expectedTotal == a + b)
 end
 
+function m.singleLiteralCaseArgumentIsPassedThrough(value: string)
+	assert(value == "hello")
+end
+
+function m.lazyTableCaseArgumentsArePassedThrough(expectedTotal: number, a: number, b: number)
+	assert(expectedTotal == a + b)
+end
+
+function m.lazySingleCaseArgumentIsPassedThrough(value: string)
+	assert(value == "lazy")
+end
+
 return m

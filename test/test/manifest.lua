@@ -23,6 +23,13 @@ return {
 				serviceTreeStartsFreshPerCase1 = {},
 				serviceTreeStartsFreshPerCase2 = {},
 				caseArgumentsArePassedThrough = { 7, 3, 4 },
+				singleLiteralCaseArgumentIsPassedThrough = "hello",
+				lazyTableCaseArgumentsArePassedThrough = function()
+					return { 9, 4, 5 }
+				end,
+				lazySingleCaseArgumentIsPassedThrough = function()
+					return "lazy"
+				end,
 			}
 		}
 	},
