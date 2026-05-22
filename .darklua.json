@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "modules_identifier": "__BUNDLE",
+    "excludes": ["@lune/**"],
+    "require_mode": {
+      "name": "luau",
+      "use_luau_configuration": true
+    }
+  },
+  "rules": [
+    "remove_comments",
+    "remove_types"
+  ]
+}

@@ -1,6 +1,14 @@
 local fs = require("@lune/fs")
 local process = require("@lune/process")
-local serde = require("@lune/serde")
+
+local Instance = require("./fake/Instance")
+local Color3 = require("./fake/Color3")
+local Vector2 = require("./fake/Vector2")
+local Vector3 = require("./fake/Vector3")
+local CFrame = require("./fake/CFrame")
+local UDim = require("./fake/UDim")
+local UDim2 = require("./fake/UDim2")
+local BrickColor = require("./fake/BrickColor")
 
 local function pathJoin(...: string): string
 	local parts = { ... }
@@ -66,57 +74,8 @@ local manifest = result
 
 assert(type(manifest) == "table", "manifest must return a table")
 
-local globals = getfenv(0)
+local baseGlobals = getfenv(0)
 local realRequire = require
-local fileModuleCache = {}
-
-local function loadFileModule(modulePath: string, scriptInstance)
-	modulePath = normalizeFilesystemPath(modulePath)
-
-	local cached = fileModuleCache[modulePath]
-
-	if cached ~= nil then
-		return cached
-	end
-
-	local moduleSource = fs.readFile(modulePath .. ".lua")
-	local moduleChunk, moduleCompileErr = loadstring(moduleSource, "@" .. modulePath)
-
-	if not moduleChunk then
-		error(moduleCompileErr, 0)
-	end
-
-	local oldScript = globals.script
-	local oldCurrentFilePath = globals.__currentFilePath
-
-	globals.script = scriptInstance
-	globals.__currentFilePath = modulePath
-
-	local moduleOk, moduleResult = xpcall(moduleChunk, traceback)
-
-	globals.script = oldScript
-	globals.__currentFilePath = oldCurrentFilePath
-
-	if not moduleOk then
-		error(moduleResult, 0)
-	end
-
-	fileModuleCache[modulePath] = moduleResult
-
-	return moduleResult
-end
-
-local Instance = realRequire("./fake/Instance")
-local Color3 = realRequire("./fake/Color3")
-local Vector2 = realRequire("./fake/Vector2")
-local Vector3 = realRequire("./fake/Vector3")
-local CFrame = realRequire("./fake/CFrame")
-local UDim = realRequire("./fake/UDim")
-local UDim2 = realRequire("./fake/UDim2")
-local BrickColor = realRequire("./fake/BrickColor")
-
-local mounts = {}
-local mountByInstance = {}
 
 local function splitPath(path: string): { string }
 	local parts = {}
@@ -147,27 +106,6 @@ local function normalizePath(path: string): string
 	return joinParts(splitPath(path))
 end
 
-local function readRequireAliases(): { [string]: string }
-	local luaurcPath = pathJoin(process.cwd, ".luaurc")
-
-	if not fs.isFile(luaurcPath) then
-		return {}
-	end
-
-	local config = serde.decode("json", fs.readFile(luaurcPath))
-	local aliases = {}
-
-	for aliasName, aliasPath in pairs(config.aliases or {}) do
-		if type(aliasName) == "string" and type(aliasPath) == "string" then
-			aliases[aliasName] = normalizeFilesystemPath(aliasPath)
-		end
-	end
-
-	return aliases
-end
-
-local requireAliases = readRequireAliases()
-
 local function resolveAliasedModuleToFilePath(modulePath: string): string?
 	local aliasName, remainder = modulePath:match("^@([^/]+)(.*)$")
 
@@ -175,16 +113,27 @@ local function resolveAliasedModuleToFilePath(modulePath: string): string?
 		return nil
 	end
 
-	local aliasRoot = requireAliases[aliasName]
-
-	if aliasRoot ~= nil then
-		return normalizeFilesystemPath(pathJoin(aliasRoot, remainder))
-	end
-
 	local repoRelativePath = normalizeFilesystemPath(pathJoin(aliasName, remainder))
 
 	if fs.isFile(repoRelativePath .. ".lua") then
 		return repoRelativePath
+	end
+
+	local firstSegment, trailingPath = remainder:match("^/([^/]+)(.*)$")
+
+	if firstSegment ~= nil then
+		for _, moduleRoot in pairs(manifest.mounts) do
+			local normalizedRoot = normalizeFilesystemPath(moduleRoot)
+			local rootName = normalizedRoot:match("([^/]+)$")
+
+			if rootName == firstSegment then
+				local candidatePath = normalizeFilesystemPath(pathJoin(normalizedRoot, trailingPath))
+
+				if fs.isFile(candidatePath .. ".lua") then
+					return candidatePath
+				end
+			end
+		end
 	end
 
 	return nil
@@ -236,179 +185,283 @@ local function createChild(parent, name: string, className: string?)
 	return child
 end
 
-local game = createInstance("game", "DataModel", nil)
-
-function game:GetService(serviceName: string)
-	local service = self._children[serviceName]
-
-	if service == nil then
-		error("Unknown service: " .. tostring(serviceName))
-	end
-
-	return service
-end
-
-local function mountService(serviceName: string, moduleRoot: string)
-	local service = createInstance(serviceName, serviceName, game)
-
-	local mount = {
-		service = service,
-		root = normalizePath(moduleRoot),
-	}
-
-	table.insert(mounts, mount)
-	mountByInstance[service] = mount
-	service._childResolver = function(parent, name: string)
-		return createChild(parent, name)
-	end
-
-	return service
-end
-
 local function startsWithPath(path: string, prefix: string): boolean
 	return path == prefix or path:sub(1, #prefix + 1) == prefix .. "/"
 end
 
-local function findMountForPath(modulePath: string)
-	local bestMount = nil
+local function createSandbox()
+	local fileModuleCache = {}
+	local mounts = {}
+	local mountByInstance = {}
+	local sandboxGlobals = setmetatable({}, { __index = baseGlobals })
+	sandboxGlobals._G = sandboxGlobals
 
-	for _, mount in ipairs(mounts) do
-		if startsWithPath(modulePath, mount.root) then
-			if bestMount == nil or #mount.root > #bestMount.root then
-				bestMount = mount
+	local game = createInstance("game", "DataModel", nil)
+
+	function game:GetService(serviceName: string)
+		local service = self._children[serviceName]
+
+		if service == nil then
+			error("Unknown service: " .. tostring(serviceName))
+		end
+
+		return service
+	end
+
+	local function mountService(serviceName: string, moduleRoot: string)
+		local service = createInstance(serviceName, serviceName, game)
+
+		local mount = {
+			service = service,
+			root = normalizePath(moduleRoot),
+		}
+
+		table.insert(mounts, mount)
+		mountByInstance[service] = mount
+		service._childResolver = function(parent, name: string)
+			return createChild(parent, name)
+		end
+
+		return service
+	end
+
+	local function findMountForPath(modulePath: string)
+		local bestMount = nil
+
+		for _, mount in ipairs(mounts) do
+			if startsWithPath(modulePath, mount.root) then
+				if bestMount == nil or #mount.root > #bestMount.root then
+					bestMount = mount
+				end
 			end
 		end
+
+		return bestMount
 	end
 
-	return bestMount
-end
+	local function ensureInstanceForModulePath(modulePath: string)
+		modulePath = normalizePath(modulePath)
 
-local function ensureInstanceForModulePath(modulePath: string)
-	modulePath = normalizePath(modulePath)
+		local mount = findMountForPath(modulePath)
 
-	local mount = findMountForPath(modulePath)
+		if mount == nil then
+			return nil
+		end
 
-	if mount == nil then
-		return nil
+		local rest = modulePath:sub(#mount.root + 1)
+
+		if rest:sub(1, 1) == "/" then
+			rest = rest:sub(2)
+		end
+
+		local node = mount.service
+
+		for _, segment in ipairs(splitPath(rest)) do
+			node = createChild(node, segment)
+		end
+
+		node.ClassName = "ModuleScript"
+
+		return node
 	end
 
-	local rest = modulePath:sub(#mount.root + 1)
+	local function modulePathFromInstance(instance): string
+		local parts = {}
+		local node = instance
 
-	if rest:sub(1, 1) == "/" then
-		rest = rest:sub(2)
-	end
+		while node ~= nil do
+			local mount = mountByInstance[node]
 
-	local node = mount.service
+			if mount ~= nil then
+				if #parts == 0 then
+					return mount.root
+				end
 
-	for _, segment in ipairs(splitPath(rest)) do
-		node = createChild(node, segment)
-	end
-
-	node.ClassName = "ModuleScript"
-
-	return node
-end
-
-local function modulePathFromInstance(instance): string
-	local parts = {}
-	local node = instance
-
-	while node ~= nil do
-		local mount = mountByInstance[node]
-
-		if mount ~= nil then
-			if #parts == 0 then
-				return mount.root
+				return mount.root .. "/" .. table.concat(parts, "/")
 			end
 
-			return mount.root .. "/" .. table.concat(parts, "/")
+			table.insert(parts, 1, node.Name)
+			node = node.Parent
 		end
 
-		table.insert(parts, 1, node.Name)
-		node = node.Parent
+		error("Instance is not under a mounted service: " .. tostring(instance))
 	end
 
-	error("Instance is not under a mounted service: " .. tostring(instance))
-end
+	local function resolveStringRequire(path: string): string
+		if path:sub(1, 1) == "." then
+			local currentScript = sandboxGlobals.script
 
-local function resolveStringRequire(path: string): string
-	if path:sub(1, 1) == "." then
-		local currentScript = globals.script
+			if currentScript ~= nil then
+				local currentPath = modulePathFromInstance(currentScript)
+				return normalizePath(dirname(currentPath) .. "/" .. path)
+			end
 
-		if currentScript ~= nil then
-			local currentPath = modulePathFromInstance(currentScript)
-			return normalizePath(dirname(currentPath) .. "/" .. path)
+			local currentFilePath = sandboxGlobals.__currentFilePath
+
+			if currentFilePath ~= nil then
+				return normalizeFilesystemPath(pathJoin(dirname(currentFilePath), path))
+			end
+
+			error("Relative require used without a current script: " .. path)
 		end
 
-		local currentFilePath = globals.__currentFilePath
+		return normalizePath(path)
+	end
 
-		if currentFilePath ~= nil then
-			return normalizeFilesystemPath(pathJoin(dirname(currentFilePath), path))
+	local function loadFileModule(modulePath: string, scriptInstance)
+		modulePath = normalizeFilesystemPath(modulePath)
+
+		local cached = fileModuleCache[modulePath]
+
+		if cached ~= nil then
+			return cached
 		end
 
-		error("Relative require used without a current script: " .. path)
+		local moduleSource = fs.readFile(modulePath .. ".lua")
+		local moduleChunk, moduleCompileErr = loadstring(moduleSource, "@" .. modulePath)
+
+		if not moduleChunk then
+			error(moduleCompileErr, 0)
+		end
+
+		setfenv(moduleChunk, sandboxGlobals)
+
+		local oldScript = sandboxGlobals.script
+		local oldCurrentFilePath = sandboxGlobals.__currentFilePath
+
+		sandboxGlobals.script = scriptInstance
+		sandboxGlobals.__currentFilePath = modulePath
+
+		local moduleOk, moduleResult = xpcall(moduleChunk, traceback)
+
+		sandboxGlobals.script = oldScript
+		sandboxGlobals.__currentFilePath = oldCurrentFilePath
+
+		if not moduleOk then
+			error(moduleResult, 0)
+		end
+
+		fileModuleCache[modulePath] = moduleResult
+
+		return moduleResult
 	end
 
-	return normalizePath(path)
-end
+	local function requireWithScript(modulePath: string, scriptInstance)
+		local fileModulePath = moduleFilePathFromRequirePath(modulePath)
+		local loader = realRequire
+		local loadTarget = modulePath
 
-local function requireWithScript(modulePath: string, scriptInstance)
-	local fileModulePath = moduleFilePathFromRequirePath(modulePath)
-	local loader = realRequire
-	local loadTarget = modulePath
+		if fileModulePath ~= nil then
+			loader = loadFileModule
+			loadTarget = fileModulePath
+		end
 
-	if fileModulePath ~= nil then
-		loader = loadFileModule
-		loadTarget = fileModulePath
+		local ok, result = pcall(loader, loadTarget, scriptInstance)
+
+		if not ok then
+			error(result, 2)
+		end
+
+		return result
 	end
 
-	local ok, result = pcall(loader, loadTarget, scriptInstance)
+	local function robloxRequire(target)
+		if type(target) == "string" then
+			local modulePath = resolveStringRequire(target)
+			local scriptInstance = ensureInstanceForModulePath(modulePath)
 
-	if not ok then
-		error(result, 2)
+			return requireWithScript(modulePath, scriptInstance)
+		end
+
+		if type(target) == "table" and target._isFakeRobloxInstance then
+			local modulePath = modulePathFromInstance(target)
+
+			target.ClassName = "ModuleScript"
+
+			return requireWithScript(modulePath, target)
+		end
+
+		error("Cannot require value of type " .. typeof(target))
 	end
 
-	return result
-end
+	local services = {}
 
-local function robloxRequire(target)
-	if type(target) == "string" then
-		local modulePath = resolveStringRequire(target)
-		local scriptInstance = ensureInstanceForModulePath(modulePath)
-
-		return requireWithScript(modulePath, scriptInstance)
+	for serviceName, moduleRoot in pairs(manifest.mounts) do
+		services[serviceName] = mountService(serviceName, moduleRoot)
 	end
 
-	if type(target) == "table" and target._isFakeRobloxInstance then
-		local modulePath = modulePathFromInstance(target)
+	local installedGlobalsSnapshot = nil
 
-		target.ClassName = "ModuleScript"
+	local function install()
+		sandboxGlobals.game = game
+		sandboxGlobals.require = robloxRequire
 
-		return requireWithScript(modulePath, target)
+		sandboxGlobals.Instance = Instance
+		sandboxGlobals.Color3 = Color3
+		sandboxGlobals.Vector2 = Vector2
+		sandboxGlobals.Vector3 = Vector3
+		sandboxGlobals.CFrame = CFrame
+		sandboxGlobals.UDim = UDim
+		sandboxGlobals.UDim2 = UDim2
+		sandboxGlobals.BrickColor = BrickColor
+
+		for serviceName, service in pairs(services) do
+			sandboxGlobals[serviceName] = service
+		end
+
+		local keysToInstall = {
+			"_G",
+			"game",
+			"require",
+			"script",
+			"__currentFilePath",
+			"Instance",
+			"Color3",
+			"Vector2",
+			"Vector3",
+			"CFrame",
+			"UDim",
+			"UDim2",
+			"BrickColor",
+		}
+
+		for serviceName in pairs(services) do
+			table.insert(keysToInstall, serviceName)
+		end
+
+		installedGlobalsSnapshot = {}
+
+		for _, key in ipairs(keysToInstall) do
+			installedGlobalsSnapshot[key] = baseGlobals[key]
+			baseGlobals[key] = sandboxGlobals[key]
+		end
 	end
 
-	error("Cannot require value of type " .. typeof(target))
+	local function uninstall()
+		if installedGlobalsSnapshot == nil then
+			return
+		end
+
+		for key, value in pairs(installedGlobalsSnapshot) do
+			baseGlobals[key] = value
+		end
+
+		installedGlobalsSnapshot = nil
+	end
+
+	return {
+		game = game,
+		services = services,
+		globals = sandboxGlobals,
+		require = robloxRequire,
+		loadFileModule = loadFileModule,
+		install = install,
+		uninstall = uninstall,
+	}
 end
 
 local function withTraceback(err)
     return debug.traceback(tostring(err), 2)
-end
-
-globals.game = game
-globals.require = robloxRequire
-
-globals.Instance = Instance
-globals.Color3 = Color3
-globals.Vector2 = Vector2
-globals.Vector3 = Vector3
-globals.CFrame = CFrame
-globals.UDim = UDim
-globals.UDim2 = UDim2
-globals.BrickColor = BrickColor
-
-for serviceName, moduleRoot in pairs(manifest.mounts) do
-	local mounted = mountService(serviceName, moduleRoot)
-	globals[serviceName] = mounted
 end
 
 local out = ""
@@ -419,11 +472,17 @@ for testName, testData in pairs(manifest.tests) do
 	print(`[TEST]: {testName}`)
 	
 	local modulePath = resolvePathFromFile(filePath, testData.module)
-	local module = if testData.module:sub(1, 1) == "." then loadFileModule(modulePath) else realRequire(testData.module)
 	
 	for caseName, deps in pairs(testData.cases) do
 		total += 1
-		local success, result = xpcall(module[caseName], withTraceback)
+		local sandbox = createSandbox()
+		sandbox.install()
+
+		local success, result = xpcall(function()
+			local module = if testData.module:sub(1, 1) == "." then sandbox.loadFileModule(modulePath) else sandbox.require(testData.module)
+			return module[caseName]()
+		end, withTraceback)
+		sandbox.uninstall()
 		
 		local text = if success then "PASS" else "FAIL"
 		print(`- [{text}]: {caseName}`)
