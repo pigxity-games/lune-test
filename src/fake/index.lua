@@ -7,4 +7,5 @@ return {
 	UDim = require("./UDim"),
 	UDim2 = require("./UDim2"),
 	BrickColor = require("./BrickColor"),
+	Random = require("./Random"),
 }

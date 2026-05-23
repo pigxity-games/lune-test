@@ -1,5 +1,6 @@
 {
-	"aliases": {
-		"@src": "src"
-	}
+  "aliases": {
+    "src": "src",
+    "lune": "~/.lune/.typedefs/0.10.4/"
+  }
 }

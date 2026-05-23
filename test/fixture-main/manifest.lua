@@ -48,6 +48,8 @@ return {
 				cframeOrientationAndLookAt = {},
 				brickColorConstructorsAndEquality = {},
 				brickColorPaletteClosestAndRandom = {},
+				randomDeterminismCloneAndRanges = {},
+				randomUnitVectorAndShuffle = {},
 				instanceHierarchyAndLookup = {},
 				instanceRenameWaitAndDestroy = {},
 			},

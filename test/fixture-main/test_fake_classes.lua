@@ -182,6 +182,45 @@ function m.brickColorPaletteClosestAndRandom()
 	assertEqual(BrickColor.new(randomColor.Number), randomColor)
 end
 
+function m.randomDeterminismCloneAndRanges()
+	local a = Random.new(12345)
+	local b = Random.new(12345)
+	local cloned = a:Clone()
+
+	local firstA = a:NextNumber()
+	local firstB = b:NextNumber()
+	local firstClone = cloned:NextNumber()
+
+	assertClose(firstA, firstB, 1e-12, "seeded next number")
+	assertClose(firstA, firstClone, 1e-12, "cloned next number")
+
+	local rangedNumber = a:NextNumber(10, 20)
+	local rangedInteger = a:NextInteger(3, 7)
+
+	assert(rangedNumber >= 10 and rangedNumber <= 20)
+	assert(rangedInteger >= 3 and rangedInteger <= 7)
+	assertEqual(Random.new(9):NextInteger(4, 4), 4)
+	assertEqual(Random.new(9):NextNumber(2, 2), 2)
+	assertEqual(tostring(Random.new(1)), "Random")
+end
+
+function m.randomUnitVectorAndShuffle()
+	local rng = Random.new(6789)
+	local unit = rng:NextUnitVector()
+	local items = { "a", "b", "c", "d", "e" }
+	local before = table.concat(items, "")
+
+	assertClose(unit:Dot(unit), 1, 1e-9, "unit vector magnitude")
+
+	rng:Shuffle(items)
+
+	assertEqual(#items, 5)
+	assert(table.concat(items, "") ~= before)
+
+	table.sort(items)
+	assertEqual(table.concat(items, ""), "abcde")
+end
+
 function m.instanceHierarchyAndLookup()
 	local folder = Instance.new("Folder")
 	local child = Instance.new("Part")

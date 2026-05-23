@@ -324,6 +324,17 @@ local function normalizeManifestMounts(manifest, manifestFilePath: string)
 		flattenMountSpec(normalizedMounts, manifestFilePath, manifest.mounts)
 	end
 
+	if manifest.rojoProject ~= nil then
+		assert(type(manifest.rojoProject) == "string", "manifest.rojoProject must be a string")
+
+		local rojoProjectPath = paths.resolveManifestResourcePath(manifestFilePath, manifest.rojoProject)
+		local rojoMounts = mountsFromRojoProject(rojoProjectPath)
+
+		for _, mountData in ipairs(rojoMounts) do
+			table.insert(normalizedMounts, mountData)
+		end
+	end
+
 	return normalizedMounts
 end
 

@@ -11,6 +11,5 @@
     "luau-lsp.types.definitionFiles": {
         "@global-types": "types.d.luau"
     },
-    "luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
     "stylua.targetReleaseVersion": "latest",
 }

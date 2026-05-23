@@ -3,20 +3,6 @@ local Vector3 = require("./Vector3")
 local CFrame = {}
 CFrame.__index = CFrame
 
-local function identityRotation()
-	return {
-		1,
-		0,
-		0,
-		0,
-		1,
-		0,
-		0,
-		0,
-		1,
-	}
-end
-
 function CFrame.new(x: any?, y: number?, z: number?)
 	local position
 
@@ -31,7 +17,6 @@ function CFrame.new(x: any?, y: number?, z: number?)
 		X = position.X,
 		Y = position.Y,
 		Z = position.Z,
-		_rotation = identityRotation(),
 	}, CFrame)
 end
 
