@@ -1,4 +1,5 @@
 local fs = require("@lune/fs")
+local process = require("@lune/process")
 local serde = require("@lune/serde")
 
 local paths = require("./paths")
@@ -142,7 +143,7 @@ local function discoveredTestName(manifestFilePath: string, sourceFilePath: stri
 	return paths.normalizeRequirePath(paths.sourceFilePathWithoutExtension(sourceFilePath))
 end
 
-local function discoverTestsFromLocations(testLocations, manifestFilePath: string, manifestMounts, workspaces)
+local function discoverTestsFromLocations(testLocations, manifestFilePath: string, manifestMounts)
 	assert(type(testLocations) == "table", "manifest.testLocations must be a table")
 
 	local discoveredTests = {}
@@ -302,6 +303,20 @@ local function normalizeWorkspaceMounts(workspaceData, manifestFilePath: string)
 	return normalizedMounts
 end
 
+local function normalizeWorkspaces(rawWorkspaces, manifestFilePath: string)
+	local normalizedWorkspaces = {}
+
+	for workspaceName, workspaceData in pairs(rawWorkspaces) do
+		assert(type(workspaceName) == "string", "manifest.workspaces keys must be strings")
+
+		normalizedWorkspaces[workspaceName] = {
+			mounts = normalizeWorkspaceMounts(workspaceData, manifestFilePath),
+		}
+	end
+
+	return normalizedWorkspaces
+end
+
 local function normalizeManifestMounts(manifest, manifestFilePath: string)
 	local normalizedMounts = {}
 
@@ -327,7 +342,7 @@ local function normalizeTest(testName: string, testData, manifestFilePath: strin
 		local workspaceData = workspaces[testData.workspace]
 		assert(workspaceData ~= nil, `unknown workspace: {testData.workspace}`)
 
-		mounts = normalizeWorkspaceMounts(workspaceData, manifestFilePath)
+		mounts = workspaceData.mounts
 	end
 
 	assert(#mounts > 0, `manifest.tests.{testName} must resolve at least one mount`)
@@ -344,6 +359,9 @@ end
 function manifestRunner.validateManifest(manifest)
 	assert(type(manifest) == "table", "manifest must return a table")
 	assert(type(manifest.tests) == "table", "manifest.tests must be a table")
+	assert(type(manifest.mounts) == "table", "manifest.mounts must be a table")
+	assert(type(manifest.workspaces) == "table", "manifest.workspaces must be a table")
+	assert(type(manifest.manifestFilePath) == "string", "manifest.manifestFilePath must be a string")
 
 	for testName, testData in pairs(manifest.tests) do
 		assert(type(testData.module) == "string", `manifest.tests.{testName}.module must be a string`)
@@ -357,6 +375,18 @@ function manifestRunner.validateManifest(manifest)
 			assert(type(mountData.mountPath) == "string", `manifest.tests.{testName}.mounts[{index}].mountPath must be a string`)
 			assert(type(mountData.moduleRoot) == "string", `manifest.tests.{testName}.mounts[{index}].moduleRoot must be a string`)
 		end
+	end
+
+	for index, mountData in ipairs(manifest.mounts) do
+		assert(type(mountData) == "table", `manifest.mounts[{index}] must be a table`)
+		assert(type(mountData.mountPath) == "string", `manifest.mounts[{index}].mountPath must be a string`)
+		assert(type(mountData.moduleRoot) == "string", `manifest.mounts[{index}].moduleRoot must be a string`)
+	end
+
+	for workspaceName, workspaceData in pairs(manifest.workspaces) do
+		assert(type(workspaceName) == "string", "manifest.workspaces keys must be strings")
+		assert(type(workspaceData) == "table", `manifest.workspaces.{workspaceName} must be a table`)
+		assert(type(workspaceData.mounts) == "table", `manifest.workspaces.{workspaceName}.mounts must be a table`)
 	end
 
 	return manifest
@@ -375,10 +405,15 @@ local function loadManifestInternal(filePath: string, seenPaths)
 
 	local normalizedManifest = {
 		tests = {},
+		mounts = {},
+		workspaces = {},
+		manifestFilePath = normalizedFilePath,
 	}
 
 	local manifestMounts = normalizeManifestMounts(rawManifest, normalizedFilePath)
-	local workspaces = rawManifest.workspaces or {}
+	local workspaces = normalizeWorkspaces(rawManifest.workspaces or {}, normalizedFilePath)
+	normalizedManifest.mounts = manifestMounts
+	normalizedManifest.workspaces = workspaces
 
 	if rawManifest.workspaces ~= nil then
 		assert(type(rawManifest.workspaces) == "table", "manifest.workspaces must be a table")
@@ -400,7 +435,7 @@ local function loadManifestInternal(filePath: string, seenPaths)
 	end
 
 	if rawManifest.testLocations ~= nil then
-		local discoveredTests = discoverTestsFromLocations(rawManifest.testLocations, normalizedFilePath, manifestMounts, workspaces)
+		local discoveredTests = discoverTestsFromLocations(rawManifest.testLocations, normalizedFilePath, manifestMounts)
 
 		for testName, testData in pairs(discoveredTests) do
 			assert(normalizedManifest.tests[testName] == nil, `duplicate test suite: {testName}`)
@@ -433,6 +468,89 @@ end
 
 function manifestRunner.loadManifest(filePath: string)
 	return loadManifestInternal(filePath, {})
+end
+
+function manifestRunner.getMountsForWorkspace(manifest, workspaceName: string?)
+	if workspaceName == nil then
+		return manifest.mounts
+	end
+
+	local workspaceData = manifest.workspaces[workspaceName]
+	assert(workspaceData ~= nil, `unknown workspace: {workspaceName}`)
+
+	return workspaceData.mounts
+end
+
+function manifestRunner.inferWorkspaceForScript(manifest, scriptPath: string): string?
+	local relativePath = paths.relativeFilesystemPath(paths.dirname(manifest.manifestFilePath), scriptPath)
+
+	if relativePath == nil then
+		return nil
+	end
+
+	local normalizedRelativePath = relativePath:lower()
+	local matchedWorkspaceName = nil
+
+	for workspaceName in pairs(manifest.workspaces) do
+		local workspacePattern = "%f[%w]" .. workspaceName:lower():gsub("([^%w])", "%%%1") .. "%f[^%w]"
+
+		if normalizedRelativePath:match(workspacePattern) ~= nil then
+			if matchedWorkspaceName ~= nil then
+				return nil
+			end
+
+			matchedWorkspaceName = workspaceName
+		end
+	end
+
+	return matchedWorkspaceName
+end
+
+function manifestRunner.getMountsForScript(manifest, scriptPath: string, explicitWorkspaceName: string?): { any }
+	if explicitWorkspaceName ~= nil then
+		return manifestRunner.getMountsForWorkspace(manifest, explicitWorkspaceName)
+	end
+
+	if #manifest.mounts > 0 then
+		return manifest.mounts
+	end
+
+	local inferredWorkspaceName = manifestRunner.inferWorkspaceForScript(manifest, scriptPath)
+
+	if inferredWorkspaceName ~= nil then
+		return manifestRunner.getMountsForWorkspace(manifest, inferredWorkspaceName)
+	end
+
+	if next(manifest.workspaces) ~= nil then
+		error("script requires a workspace; pass -w/--workspace or name the script to match one workspace", 0)
+	end
+
+	return manifest.mounts
+end
+
+function manifestRunner.findNearestManifest(startPath: string): string?
+	local currentPath = paths.normalizeFilesystemPath(startPath)
+
+	if paths.isSourceFilePath(currentPath) or fs.isFile(currentPath) or paths.resolveExistingSourceFile(currentPath) ~= nil then
+		currentPath = paths.dirname(currentPath)
+	end
+
+	while true do
+		local candidatePath = paths.pathJoin(currentPath, "manifest")
+		local manifestPath = paths.resolveExistingSourceFile(candidatePath)
+
+		if manifestPath ~= nil then
+			return manifestPath
+		end
+
+		local parentPath = paths.dirname(currentPath)
+
+		if parentPath == currentPath then
+			return nil
+		end
+
+		currentPath = parentPath
+	end
 end
 
 return manifestRunner

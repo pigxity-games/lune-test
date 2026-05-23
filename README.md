@@ -1,11 +1,21 @@
 # lune-test
-A test runner script written for the lune runtime which aims to replicate a roblox environment. It features path resolution from Roblox instance-based requires and emulation of common classes such as Color3, Vector3, and Instance.
+A test runner for the Lune runtime that simulates enough of the Roblox environment to run unit tests and sandboxed scripts with Roblox-style globals and requires.
+
+It supports:
+- Roblox instance-based requires
+- fake Roblox globals like `game`, `Instance`, `Vector3`, `Color3`, and more
+- manifest composition with child manifests
+- multiple workspaces
+- Rojo-derived mounts
+- test auto-discovery with globs
+- running plain Lua/Luau scripts in the same sandboxed environment
 
 ## Installation
-- Download the lua bundle file from GitHub releases
-- Place it in `~/.lune` to allow for easy running
+- Download the bundled Lua file from GitHub releases
+- Place it in `~/.lune` for easy execution
 
-Or build the bundle from source:
+Or build it from source:
+
 ```sh
 git clone https://github.com/pigxity-games/lune-test
 cd lune-test
@@ -13,114 +23,145 @@ rokit install
 darklua process src/main.lua dist/lune-test.luau
 ```
 
-## Usage
-The script accepts a path to a `manifest.lua` file and an optional test suite name.
-
-You may run the script as follows:
-```sh
-lune run lune-test test/manifest.lua
-```
-
-To run just one suite from `manifest.tests`, pass its name as the second argument:
+## CLI usage
+By default, `lune-test` looks for `test/manifest.lua`.
 
 ```sh
-lune run lune-test test/manifest.lua test_runner_core
+lune run src/main.lua
 ```
 
-`manifest` should be a lua file which contains a table such as the following:
+You can provide a manifest explicitly with `-m` or `--manifest`:
+
+```sh
+lune run src/main.lua --manifest test/manifest.lua
+```
+
+The first positional argument is a comma-separated list of selections. Each selection may be:
+- a test suite name from the manifest
+- a path to a `.lua` or `.luau` file to run as a sandboxed script
+
+Examples:
+
+```sh
+lune run src/main.lua test_runner_core
+lune run src/main.lua test/fixture-main/scripts/uses_modules.lua
+lune run src/main.lua test_runner_core,test/multi-workspace/scripts/game_script.lua --workspace game
+```
+
+When running scripts:
+- each script runs in its own sandbox
+- the closest manifest is selected automatically by walking parent directories upward
+- if the selected manifest only defines workspaces, `lune-test` tries to infer the workspace from the script path
+- you can override workspace selection with `-w` or `--workspace`
+
+```sh
+lune run src/main.lua test/multi-workspace/scripts/game_script.lua
+lune run src/main.lua test/multi-workspace/scripts/game_script.lua --workspace game
+```
+
+Script-only runs do not print `[TEST]`, `[PASS]`, or `TEST RESULTS`. Mixed script plus suite runs still use the normal reporter output.
+
+## Manifest format
+A manifest is a Lua file that returns a table.
+
+Basic example:
 
 ```lua
 return {
 	tests = {
-		test_1 = {
-			module = "./test_1",
+		test_runner_core = {
+			module = "./test_runner_core",
 			cases = {
-				testCaseFunction1 = { "hello", 123 },
-				testCaseFunction2 = "single value",
-				testCaseFunction3 = function()
-					return { true, "lazy args" }
+				caseArgumentsArePassedThrough = { 7, 3, 4 },
+				singleLiteralCaseArgumentIsPassedThrough = "hello",
+				lazyTableCaseArgumentsArePassedThrough = function()
+					return { 9, 4, 5 }
 				end,
-				testCaseFunction4 = function()
-					return "lazy single value"
-				end,
-			}
-		},
-		test_2 = {
-			module = "./test_2",
-			cases = {
-				testCaseFunction2 = {},
-				testCaseFunction3 = { true, "abc" }
-			}
+			},
 		},
 	},
 	mounts = {
 		ReplicatedStorage = "./src/shared",
 		ServerScriptService = "./src/server",
 		PlayerScripts = "./src/client",
-	}
+	},
 }
 ```
 
-Each `cases` value is passed to the named test function as positional arguments.
+Each `cases` value is passed to the named test function as positional arguments:
+- `{ "hello", 123 }` becomes `testCase("hello", 123)`
+- `"single value"` becomes `testCase("single value")`
+- a function value is evaluated lazily at runtime and then normalized the same way
 
-- A table value like `testCaseFunction1 = { "hello", 123 }` calls `testCaseFunction1("hello", 123)`.
-- A single literal value like `testCaseFunction2 = "single value"` calls `testCaseFunction2("single value")`.
-- A function value is called lazily at test time, and its return value is normalized the same way.
+## Manifest path rules
+For `mounts`, `childManifests`, `rojoProject`, and `testLocations`:
+- paths starting with `./` are resolved relative to the manifest file
+- paths without `./` are resolved from the current working directory
+- absolute paths are used as-is
 
-Mount paths are relative to the manifest file when they are not absolute.
+Examples:
 
-## Manifest features / multiple workspaces
-Manifests also support more features beyond `tests` and `mounts`.
+```lua
+mounts = {
+	ReplicatedStorage = "./src/shared", -- relative to this manifest
+	ServerScriptService = "test/project/src/server", -- relative to cwd
+}
+```
 
-### Child manifests
+Rojo `$path` entries are still resolved relative to the Rojo project file itself.
+
+## Child manifests
+You can compose multiple manifests together:
 
 ```lua
 return {
 	childManifests = {
 		"./fixture-main/manifest",
-		"./multi-workspace/manifest",
+		"test/multi-workspace/manifest",
 	},
 }
 ```
 
-Child manifest paths must be relative to the parent manifest file.
-
-### Workspaces
+## Workspaces
+Workspaces let one manifest define multiple mount layouts.
 
 ```lua
 return {
 	workspaces = {
 		hub = {
-			mounts = {
-				ReplicatedStorage = "./src/hub/shared"
-				ServerScriptService = "./src/hub/server"
-			},
+			rojoProject = "test/multi-workspace/hub.project.json",
 		},
 
 		game = {
 			mounts = {
-				ReplicatedStorage = "src/game/shared" --supports both ./ and no prefix
-				ServerScriptService = "src/game/server"
+				ReplicatedStorage = {
+					_root = "./src/game/shared",
+					Common = "./src/common/shared",
+				},
+				ServerScriptService = {
+					Game = "./src/game/server",
+					Utils = "test/multi-workspace/src/game/utils",
+				},
 			},
 		},
 	},
 
 	tests = {
-		hub_tests = {
-			workspace = "hub",
-			module = "./hub_tests",
+		game_tests = {
+			workspace = "game",
+			module = "./game_tests",
 			cases = {
-				...
+				workspaceGameRequires = {},
 			},
 		},
 	},
 }
 ```
 
-If a suite sets `workspace`, it uses mounts from that workspace. Otherwise, it uses the default manifest `mounts`.
+If a suite sets `workspace`, it uses that workspace's mounts. Otherwise it uses the manifest-level `mounts`.
 
-### Nested mounts
-Nested mount tables let you mount paths to children in a service:
+## Nested mounts
+Nested mount tables let you mount children inside a service:
 
 ```lua
 mounts = {
@@ -133,7 +174,7 @@ mounts = {
 }
 ```
 
-You can use `_root` to mount a service itself, while also including child mounts:
+You can also mount the node itself with `_root`:
 
 ```lua
 mounts = {
@@ -144,7 +185,7 @@ mounts = {
 }
 ```
 
-### Rojo workspaces
+## Rojo workspaces
 Workspace definitions may use `rojoProject` instead of `mounts`:
 
 ```lua
@@ -155,14 +196,58 @@ workspaces = {
 }
 ```
 
-The loader reads `$path` entries from the Rojo tree and turns them into mounts automatically. 
+The loader reads `$path` entries from the Rojo tree and turns them into mounts automatically.
 
-Note that `StarterPlayer.StarterPlayerScripts` is exposed as `Players.LocalPlayer.PlayerScripts`.
+`StarterPlayer/StarterPlayerScripts` is exposed in the sandbox as `Players.LocalPlayer.PlayerScripts`.
 
+## Auto-discovery with `testLocations`
+You can discover tests from file globs instead of listing them manually:
 
-## Testing
-The project contains unit tests under `test/`. Run them with the test runner itself.
+```lua
+return {
+	testLocations = {
+		"./unit1/*",
+		"./unit2/**",
+	},
+}
+```
+
+Rules:
+- only `.lua` and `.luau` files are included
+- `*` matches within one path segment
+- `**` matches recursively
+- each discovered module becomes a suite
+- exported functions in the module are treated as test cases
+- non-function exports are ignored
+
+For example, `test/auto-discovery/unit1/test1.lua` becomes the suite `unit1/test1`.
+
+## Script mode
+If the positional selection is a `.lua` or `.luau` file, it is run as a script inside a sandbox with Roblox globals and requires enabled.
+
+That means scripts like this work:
+
+```lua
+local SomeGameModule = require(ServerScriptService.Game.SomeGameModule)
+local SharedGameModule = require(ServerScriptService.Utils.SharedGameModule)
+
+assert(SomeGameModule.add(8, 3) == 11)
+assert(SharedGameModule.average(10, 6) == 8)
+```
+
+This is useful for ad hoc validation, fixture smoke tests, and small integration checks.
+
+## Testing this project
+The repository contains its own unit tests under `test/`.
+
+Run the full test suite:
 
 ```sh
-lune run src/main.lua test/manifest.lua
+lune run src/main.lua
+```
+
+Run the runner-specific tests:
+
+```sh
+lune run src/main.lua --manifest test/runner/manifest.lua
 ```

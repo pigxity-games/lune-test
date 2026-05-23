@@ -88,6 +88,10 @@ function paths.normalizeRequirePath(path: string): string
 	return paths.joinParts(paths.splitPath(path))
 end
 
+function paths.isSourceFilePath(path: string): boolean
+	return path:match("%.luau?$") ~= nil
+end
+
 function paths.sourceFilePathWithoutExtension(path: string): string
 	return paths.normalizeFilesystemPath(path:gsub("%.luau$", ""):gsub("%.lua$", ""))
 end
@@ -104,6 +108,29 @@ function paths.resolveExistingSourceFile(path: string): string?
 	end
 
 	return nil
+end
+
+function paths.relativeFilesystemPath(basePath: string, targetPath: string): string?
+	local baseParts = paths.splitPath(paths.normalizeFilesystemPath(basePath))
+	local targetParts = paths.splitPath(paths.normalizeFilesystemPath(targetPath))
+
+	if #targetParts < #baseParts then
+		return nil
+	end
+
+	for index, basePart in ipairs(baseParts) do
+		if targetParts[index]:lower() ~= basePart:lower() then
+			return nil
+		end
+	end
+
+	local relativeParts = {}
+
+	for index = #baseParts + 1, #targetParts do
+		table.insert(relativeParts, targetParts[index])
+	end
+
+	return table.concat(relativeParts, "/")
 end
 
 return paths

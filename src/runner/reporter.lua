@@ -14,7 +14,9 @@ local function seperator(n: number)
 	return string.rep("-", n or 25)
 end
 
-function reporter.create()
+function reporter.create(options)
+	options = options or {}
+
 	local state = {
 		errors = {},
 		summary = {},
@@ -22,23 +24,32 @@ function reporter.create()
 		total = 0,
 		matchedSuiteCount = 0,
 	}
+	local printSuites = options.printSuites ~= false
+	local printCases = options.printCases ~= false
+	local printSummary = options.printSummary ~= false
 
 	local api = {}
 
 	function api.beginSuite(testName: string)
 		state.matchedSuiteCount += 1
-		print(`[TEST]: {testName}`)
+		if printSuites then
+			print(`[TEST]: {testName}`)
+		end
 	end
 
 	function api.finishSuite()
-		print("")
+		if printSuites or printCases then
+			print("")
+		end
 	end
 
 	function api.recordCase(testName: string, caseName: string, success: boolean, result: string?)
 		state.total += 1
 
-		local text = if success then "PASS" else "FAIL"
-		print("- " .. colorText(boolToColor(success), `[{text}]: {caseName}`))
+		if printCases then
+			local text = if success then "PASS" else "FAIL"
+			print("- " .. colorText(boolToColor(success), `[{text}]: {caseName}`))
+		end
 
 		if success then
 			state.totalSuccess += 1
@@ -58,6 +69,10 @@ function reporter.create()
 	end
 
 	function api.printSummary()
+		if not printSummary then
+			return
+		end
+
 		if #state.errors > 0 then
 			print(seperator())
 			print("COLLECTED ERRORS:")
