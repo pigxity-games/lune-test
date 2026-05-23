@@ -1,7 +1,7 @@
 return {
 	workspaces = {
 		hub = {
-			rojoProject = "./hub.project.json",
+			rojoProject = "test/multi-workspace/hub.project.json",
 		},
 
 		game = {
@@ -12,7 +12,7 @@ return {
 				},
 				ServerScriptService = {
 					Game = "./src/game/server",
-					Utils = "./src/game/utils",
+					Utils = "test/multi-workspace/src/game/utils",
 				},
 			},
 		},

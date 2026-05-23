@@ -1,3 +1,4 @@
+local fs = require("@lune/fs")
 local process = require("@lune/process")
 
 local paths = {}
@@ -50,6 +51,14 @@ function paths.resolveFilesystemPathFromFile(baseFilePath: string, targetPath: s
 	return paths.normalizeFilesystemPath(paths.pathJoin(paths.dirname(baseFilePath), targetPath))
 end
 
+function paths.resolveManifestResourcePath(baseFilePath: string, targetPath: string): string
+	if targetPath:sub(1, 2) == "./" then
+		return paths.normalizeFilesystemPath(paths.pathJoin(paths.dirname(baseFilePath), targetPath))
+	end
+
+	return paths.normalizeFilesystemPath(targetPath)
+end
+
 function paths.splitPath(path: string): { string }
 	local parts = {}
 
@@ -77,6 +86,24 @@ function paths.normalizeRequirePath(path: string): string
 	path = path:gsub("/+$", "")
 
 	return paths.joinParts(paths.splitPath(path))
+end
+
+function paths.sourceFilePathWithoutExtension(path: string): string
+	return paths.normalizeFilesystemPath(path:gsub("%.luau$", ""):gsub("%.lua$", ""))
+end
+
+function paths.resolveExistingSourceFile(path: string): string?
+	local normalizedPath = paths.sourceFilePathWithoutExtension(path)
+
+	if fs.isFile(normalizedPath .. ".lua") then
+		return normalizedPath .. ".lua"
+	end
+
+	if fs.isFile(normalizedPath .. ".luau") then
+		return normalizedPath .. ".luau"
+	end
+
+	return nil
 end
 
 return paths

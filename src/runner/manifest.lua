@@ -10,11 +10,9 @@ local function traceback(err)
 end
 
 function manifestRunner.readManifest(filePath: string): string
-	if not fs.isFile(filePath) and fs.isFile(filePath .. ".lua") then
-		filePath ..= ".lua"
-	end
+	local sourceFilePath = paths.resolveExistingSourceFile(filePath) or filePath
 
-	return fs.readFile(filePath)
+	return fs.readFile(sourceFilePath)
 end
 
 function manifestRunner.compileManifest(source: string, filePath: string)
@@ -42,10 +40,150 @@ local function normalizeModulePath(modulePath: string, manifestFilePath: string)
 	local normalizedModulePath = modulePath
 
 	if isFileModule then
-		normalizedModulePath = paths.resolvePathFromFile(manifestFilePath, modulePath)
+		normalizedModulePath = paths.sourceFilePathWithoutExtension(paths.resolvePathFromFile(manifestFilePath, modulePath))
 	end
 
 	return normalizedModulePath, isFileModule
+end
+
+local function pathHasWildcard(path: string): boolean
+	return path:find("*", 1, true) ~= nil
+end
+
+local function segmentMatches(patternSegment: string, pathSegment: string): boolean
+	if patternSegment == "**" then
+		return true
+	end
+
+	local regex = "^" .. patternSegment:gsub("([%%%^%$%(%)%.%[%]%+%-%?])", "%%%1"):gsub("%*", ".*") .. "$"
+	return pathSegment:match(regex) ~= nil
+end
+
+local function pathSegmentsMatch(patternSegments, pathSegments, patternIndex: number, pathIndex: number): boolean
+	while true do
+		if patternIndex > #patternSegments then
+			return pathIndex > #pathSegments
+		end
+
+		local patternSegment = patternSegments[patternIndex]
+
+		if patternSegment == "**" then
+			if patternIndex == #patternSegments then
+				return true
+			end
+
+			for nextPathIndex = pathIndex, #pathSegments + 1 do
+				if pathSegmentsMatch(patternSegments, pathSegments, patternIndex + 1, nextPathIndex) then
+					return true
+				end
+			end
+
+			return false
+		end
+
+		if pathIndex > #pathSegments or not segmentMatches(patternSegment, pathSegments[pathIndex]) then
+			return false
+		end
+
+		patternIndex += 1
+		pathIndex += 1
+	end
+end
+
+local function globMatchesPath(pattern: string, filePath: string): boolean
+	return pathSegmentsMatch(paths.splitPath(pattern), paths.splitPath(filePath), 1, 1)
+end
+
+local function listFilesRecursive(rootPath: string, results)
+	if fs.isFile(rootPath) then
+		table.insert(results, paths.normalizeFilesystemPath(rootPath))
+		return
+	end
+
+	if not fs.isDir(rootPath) then
+		return
+	end
+
+	for _, entryName in ipairs(fs.readDir(rootPath)) do
+		local entryPath = paths.normalizeFilesystemPath(paths.pathJoin(rootPath, entryName))
+
+		if fs.isDir(entryPath) then
+			listFilesRecursive(entryPath, results)
+		elseif fs.isFile(entryPath) then
+			table.insert(results, entryPath)
+		end
+	end
+end
+
+local function discoveredTestName(manifestFilePath: string, sourceFilePath: string): string
+	local manifestDirParts = paths.splitPath(paths.dirname(manifestFilePath))
+	local sourcePathParts = paths.splitPath(paths.sourceFilePathWithoutExtension(sourceFilePath))
+	local isUnderManifestDir = #sourcePathParts > #manifestDirParts
+
+	if isUnderManifestDir then
+		for index, manifestDirPart in ipairs(manifestDirParts) do
+			if sourcePathParts[index]:lower() ~= manifestDirPart:lower() then
+				isUnderManifestDir = false
+				break
+			end
+		end
+	end
+
+	if isUnderManifestDir then
+		local relativeParts = {}
+
+		for index = #manifestDirParts + 1, #sourcePathParts do
+			table.insert(relativeParts, sourcePathParts[index])
+		end
+
+		return table.concat(relativeParts, "/")
+	end
+
+	return paths.normalizeRequirePath(paths.sourceFilePathWithoutExtension(sourceFilePath))
+end
+
+local function discoverTestsFromLocations(testLocations, manifestFilePath: string, manifestMounts, workspaces)
+	assert(type(testLocations) == "table", "manifest.testLocations must be a table")
+
+	local discoveredTests = {}
+
+	for index, locationPattern in ipairs(testLocations) do
+		assert(type(locationPattern) == "string", `manifest.testLocations[{index}] must be a string`)
+
+		local resolvedPattern = paths.resolveManifestResourcePath(manifestFilePath, locationPattern)
+		local patternParts = paths.splitPath(resolvedPattern)
+		local staticParts = {}
+
+		for _, segment in ipairs(patternParts) do
+			if pathHasWildcard(segment) then
+				break
+			end
+
+			table.insert(staticParts, segment)
+		end
+
+		local searchRoot = if #staticParts == 0 then process.cwd else paths.joinParts(staticParts)
+		local candidateFiles = {}
+		listFilesRecursive(searchRoot, candidateFiles)
+
+		for _, candidateFile in ipairs(candidateFiles) do
+			if candidateFile:match("%.luau?$") and globMatchesPath(resolvedPattern, paths.sourceFilePathWithoutExtension(candidateFile)) then
+				local testName = discoveredTestName(manifestFilePath, candidateFile)
+
+				assert(discoveredTests[testName] == nil, `duplicate test suite: {testName}`)
+
+				discoveredTests[testName] = {
+					module = paths.sourceFilePathWithoutExtension(candidateFile),
+					moduleIsFile = true,
+					cases = {},
+					mounts = manifestMounts,
+					discoverCases = true,
+				}
+			end
+		end
+	end
+
+	return discoveredTests
 end
 
 local function insertMount(normalizedMounts, mountPath: string, moduleRoot: string, manifestFilePath: string)
@@ -54,7 +192,17 @@ local function insertMount(normalizedMounts, mountPath: string, moduleRoot: stri
 
 	table.insert(normalizedMounts, {
 		mountPath = paths.normalizeRequirePath(mountPath),
-		moduleRoot = paths.resolveFilesystemPathFromFile(manifestFilePath, moduleRoot),
+		moduleRoot = paths.resolveManifestResourcePath(manifestFilePath, moduleRoot),
+	})
+end
+
+local function insertRojoMount(normalizedMounts, mountPath: string, moduleRoot: string, rojoProjectPath: string)
+	assert(type(mountPath) == "string", "mount path must be a string")
+	assert(type(moduleRoot) == "string", `mount {mountPath} must point to a string path`)
+
+	table.insert(normalizedMounts, {
+		mountPath = paths.normalizeRequirePath(mountPath),
+		moduleRoot = paths.resolveFilesystemPathFromFile(rojoProjectPath, moduleRoot),
 	})
 end
 
@@ -99,7 +247,7 @@ local function flattenRojoTree(normalizedMounts, manifestFilePath: string, node,
 	local nodePath = rawget(node, "$path")
 
 	if nodePath ~= nil and #pathParts > 0 then
-		insertMount(
+		insertRojoMount(
 			normalizedMounts,
 			normalizeRojoMountPath(table.concat(pathParts, "/")),
 			nodePath,
@@ -141,7 +289,7 @@ local function normalizeWorkspaceMounts(workspaceData, manifestFilePath: string)
 	if workspaceData.rojoProject ~= nil then
 		assert(type(workspaceData.rojoProject) == "string", "workspace.rojoProject must be a string")
 
-		local rojoProjectPath = paths.resolveFilesystemPathFromFile(manifestFilePath, workspaceData.rojoProject)
+		local rojoProjectPath = paths.resolveManifestResourcePath(manifestFilePath, workspaceData.rojoProject)
 		local rojoMounts = mountsFromRojoProject(rojoProjectPath)
 
 		for _, mountData in ipairs(rojoMounts) do
@@ -189,6 +337,7 @@ local function normalizeTest(testName: string, testData, manifestFilePath: strin
 		moduleIsFile = moduleIsFile,
 		cases = testData.cases,
 		mounts = mounts,
+		discoverCases = false,
 	}
 end
 
@@ -201,6 +350,7 @@ function manifestRunner.validateManifest(manifest)
 		assert(type(testData.moduleIsFile) == "boolean", `manifest.tests.{testName}.moduleIsFile must be a boolean`)
 		assert(type(testData.cases) == "table", `manifest.tests.{testName}.cases must be a table`)
 		assert(type(testData.mounts) == "table", `manifest.tests.{testName}.mounts must be a table`)
+		assert(type(testData.discoverCases) == "boolean", `manifest.tests.{testName}.discoverCases must be a boolean`)
 
 		for index, mountData in ipairs(testData.mounts) do
 			assert(type(mountData) == "table", `manifest.tests.{testName}.mounts[{index}] must be a table`)
@@ -249,6 +399,15 @@ local function loadManifestInternal(filePath: string, seenPaths)
 		end
 	end
 
+	if rawManifest.testLocations ~= nil then
+		local discoveredTests = discoverTestsFromLocations(rawManifest.testLocations, normalizedFilePath, manifestMounts, workspaces)
+
+		for testName, testData in pairs(discoveredTests) do
+			assert(normalizedManifest.tests[testName] == nil, `duplicate test suite: {testName}`)
+			normalizedManifest.tests[testName] = testData
+		end
+	end
+
 	if rawManifest.childManifests ~= nil then
 		assert(type(rawManifest.childManifests) == "table", "manifest.childManifests must be a table")
 
@@ -256,7 +415,7 @@ local function loadManifestInternal(filePath: string, seenPaths)
 			assert(type(childManifestPath) == "string", `manifest.childManifests[{index}] must be a string`)
 
 			local childManifest = loadManifestInternal(
-				paths.resolveFilesystemPathFromFile(normalizedFilePath, childManifestPath),
+				paths.resolveManifestResourcePath(normalizedFilePath, childManifestPath),
 				seenPaths
 			)
 

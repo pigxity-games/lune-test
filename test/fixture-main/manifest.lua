@@ -54,7 +54,7 @@ return {
 		},
 	},
 	mounts = {
-		ReplicatedStorage = "src/shared", --supports both ./ and no prefix
+		ReplicatedStorage = "test/fixture-main/src/shared",
 		ServerScriptService = "./src/server",
 		PlayerScripts = "./src/client",
 	},

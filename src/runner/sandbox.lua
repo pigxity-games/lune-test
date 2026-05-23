@@ -57,7 +57,7 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 
 	local repoRelativePath = paths.normalizeFilesystemPath(paths.pathJoin(aliasName, remainder))
 
-	if fs.isFile(repoRelativePath .. ".lua") then
+	if paths.resolveExistingSourceFile(repoRelativePath) ~= nil then
 		return repoRelativePath
 	end
 
@@ -71,7 +71,7 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 			if rootName == firstSegment then
 				local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(normalizedRoot, trailingPath))
 
-				if fs.isFile(candidatePath .. ".lua") then
+				if paths.resolveExistingSourceFile(candidatePath) ~= nil then
 					return candidatePath
 				end
 			end
@@ -96,7 +96,7 @@ local function moduleFilePathFromRequirePath(mounts, modulePath: string): string
 		return candidatePath
 	end
 
-	if fs.isFile(candidatePath .. ".lua") then
+	if paths.resolveExistingSourceFile(candidatePath) ~= nil then
 		return candidatePath
 	end
 
@@ -150,7 +150,7 @@ function sandboxModule.create(manifestMounts)
 
 		for _, entryName in ipairs(fs.readDir(moduleRoot)) do
 			local entryPath = paths.normalizeFilesystemPath(paths.pathJoin(moduleRoot, entryName))
-			local moduleName = entryName:gsub("%.lua$", "")
+			local moduleName = entryName:gsub("%.luau?$", "")
 			local childTree = tree.children[moduleName]
 
 			if childTree == nil then
@@ -163,7 +163,7 @@ function sandboxModule.create(manifestMounts)
 			if fs.isDir(entryPath) then
 				childTree.className = childTree.className or "Folder"
 				childTree.children = buildModuleTree(entryPath).children
-			elseif fs.isFile(entryPath) and entryName:sub(-4) == ".lua" then
+			elseif fs.isFile(entryPath) and entryName:match("%.luau?$") then
 				childTree.className = "ModuleScript"
 			end
 		end
@@ -327,7 +327,10 @@ function sandboxModule.create(manifestMounts)
 			return cached
 		end
 
-		local moduleSource = fs.readFile(modulePath .. ".lua")
+		local sourceFilePath = paths.resolveExistingSourceFile(modulePath)
+		assert(sourceFilePath ~= nil, `missing module source for {modulePath}`)
+
+		local moduleSource = fs.readFile(sourceFilePath)
 		local moduleChunk, moduleCompileErr = loadstring(moduleSource, "@" .. modulePath)
 
 		if not moduleChunk then

@@ -1,6 +1,7 @@
 return {
 	childManifests = {
 		"./fixture-main/manifest",
-		"./multi-workspace/manifest",
+		"test/multi-workspace/manifest",
+		"./auto-discovery/manifest",
 	},
 }
