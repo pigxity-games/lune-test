@@ -64,6 +64,17 @@ function m.runsManualSelectionsForDiscoveredSuitesByFilename()
 	assert(results.total == 2)
 end
 
+function m.runsWorkspaceLocalDiscoveredSuitesFromManifest()
+	local results = command.run({
+		"--manifest",
+		"test/workspace-test-locations/manifest.lua",
+	})
+
+	assert(results.success)
+	assert(results.matchedSuiteCount == 2)
+	assert(results.total == 2)
+end
+
 function m.suppressesReporterOutputForScriptOnlyRuns()
 	local scriptOnly = process.exec("lune", {
 		"run",

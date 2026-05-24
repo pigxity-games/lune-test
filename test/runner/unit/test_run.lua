@@ -4,6 +4,19 @@ local paths = require("@src/runner/paths")
 
 local m = {}
 
+local function countSuiteCases(manifest, suiteName)
+	local suite = manifest.tests[suiteName]
+	assert(suite ~= nil, `missing suite: {suiteName}`)
+
+	local total = 0
+
+	for _ in pairs(suite.cases) do
+		total += 1
+	end
+
+	return total
+end
+
 function m.runsScriptSelectionsInSeparateSandboxes()
 	local manifest = manifestRunner.loadManifest("test/fixture-main/manifest.lua")
 	local mounts = manifestRunner.getMountsForWorkspace(manifest, nil)
@@ -29,6 +42,7 @@ end
 function m.runsMixedSuiteAndScriptSelections()
 	local manifest = manifestRunner.loadManifest("test/fixture-main/manifest.lua")
 	local mounts = manifestRunner.getMountsForWorkspace(manifest, nil)
+	local expectedTotal = countSuiteCases(manifest, "test_module_requires") + 1
 	local results = runner.runSelections({
 		{
 			kind = "suite",
@@ -44,7 +58,7 @@ function m.runsMixedSuiteAndScriptSelections()
 	})
 
 	assert(results.success)
-	assert(results.total == 3)
+	assert(results.total == expectedTotal)
 end
 
 return m

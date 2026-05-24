@@ -5,6 +5,8 @@ return {
 			cases = {
 				replicatedStorageAndRelativeRequires = {},
 				playerScriptsClientRequires = {},
+				starterPlayerScriptsClientRequires = {},
+				aliasRequires = {},
 			},
 		},
 		test_sandboxing = {

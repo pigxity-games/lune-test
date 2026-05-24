@@ -14,8 +14,18 @@ end
 
 local specialMounts = {
 	PlayerScripts = {
-		serviceName = "Players",
-		path = { "LocalPlayer", "PlayerScripts" },
+		nodes = {
+			{
+				serviceName = "Players",
+				path = { "LocalPlayer", "PlayerScripts" },
+				className = "PlayerScripts",
+			},
+			{
+				serviceName = "StarterPlayer",
+				path = { "StarterPlayerScripts" },
+				className = "StarterPlayerScripts",
+			},
+		},
 	},
 }
 
@@ -204,22 +214,38 @@ function sandboxModule.create(manifestMounts)
 		return mount
 	end
 
+	local function ensureSpecialMountNodes(mountPath: string)
+		local specialMount = specialMounts[mountPath]
+
+		if specialMount == nil then
+			return nil
+		end
+
+		local nodes = {}
+
+		for _, specialNode in ipairs(specialMount.nodes) do
+			local node = ensureService(specialNode.serviceName)
+
+			for _, segment in ipairs(specialNode.path) do
+				node = createChild(node, segment)
+			end
+
+			node.ClassName = specialNode.className
+			table.insert(nodes, node)
+		end
+
+		return nodes
+	end
+
 	local function ensureMountNode(mountPath: string)
 		local segments = paths.splitPath(mountPath)
 		assert(#segments > 0, "mount path must not be empty")
 
 		local firstSegment = table.remove(segments, 1)
-		local specialMount = specialMounts[mountPath]
+		local specialNodes = ensureSpecialMountNodes(mountPath)
 
-		if specialMount ~= nil then
-			local node = ensureService(specialMount.serviceName)
-
-			for _, segment in ipairs(specialMount.path) do
-				node = createChild(node, segment)
-			end
-
-			node.ClassName = firstSegment
-			return node
+		if specialNodes ~= nil then
+			return specialNodes[1], specialNodes
 		end
 
 		local node = ensureService(firstSegment)
@@ -232,7 +258,23 @@ function sandboxModule.create(manifestMounts)
 	end
 
 	local function mountService(mountPath: string, moduleRoot: string)
-		return registerMount(ensureMountNode(mountPath), moduleRoot)
+		local primaryNode, allNodes = ensureMountNode(mountPath)
+
+		if allNodes ~= nil then
+			local primaryMount = nil
+
+			for _, node in ipairs(allNodes) do
+				local mount = registerMount(node, moduleRoot)
+
+				if primaryMount == nil then
+					primaryMount = mount
+				end
+			end
+
+			return primaryMount
+		end
+
+		return registerMount(primaryNode, moduleRoot)
 	end
 
 	local function findMountForPath(modulePath: string)

@@ -1,0 +1,27 @@
+{
+  "name": "Game",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+
+      "Common": {
+        "$path": "src/common/shared"
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+
+      "Game": {
+        "$path": "src/game/server"
+      },
+
+      "Utils": {
+        "$path": "src/game/utils"
+      }
+    }
+  }
+}

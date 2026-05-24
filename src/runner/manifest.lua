@@ -187,6 +187,15 @@ local function discoverTestsFromLocations(testLocations, manifestFilePath: strin
 	return discoveredTests
 end
 
+local function mergeDiscoveredTests(normalizedTests, testLocations, manifestFilePath: string, mounts, errorPrefix: string)
+	local discoveredTests = discoverTestsFromLocations(testLocations, manifestFilePath, mounts)
+
+	for testName, testData in pairs(discoveredTests) do
+		assert(normalizedTests[testName] == nil, `{errorPrefix}: {testName}`)
+		normalizedTests[testName] = testData
+	end
+end
+
 local function insertMount(normalizedMounts, mountPath: string, moduleRoot: string, manifestFilePath: string)
 	assert(type(mountPath) == "string", "mount path must be a string")
 	assert(type(moduleRoot) == "string", `mount {mountPath} must point to a string path`)
@@ -308,6 +317,7 @@ local function normalizeWorkspaces(rawWorkspaces, manifestFilePath: string)
 
 	for workspaceName, workspaceData in pairs(rawWorkspaces) do
 		assert(type(workspaceName) == "string", "manifest.workspaces keys must be strings")
+		assert(type(workspaceData) == "table", `manifest.workspaces.{workspaceName} must be a table`)
 
 		normalizedWorkspaces[workspaceName] = {
 			mounts = normalizeWorkspaceMounts(workspaceData, manifestFilePath),
@@ -446,11 +456,26 @@ local function loadManifestInternal(filePath: string, seenPaths)
 	end
 
 	if rawManifest.testLocations ~= nil then
-		local discoveredTests = discoverTestsFromLocations(rawManifest.testLocations, normalizedFilePath, manifestMounts)
+		mergeDiscoveredTests(
+			normalizedManifest.tests,
+			rawManifest.testLocations,
+			normalizedFilePath,
+			manifestMounts,
+			"duplicate test suite"
+		)
+	end
 
-		for testName, testData in pairs(discoveredTests) do
-			assert(normalizedManifest.tests[testName] == nil, `duplicate test suite: {testName}`)
-			normalizedManifest.tests[testName] = testData
+	if rawManifest.workspaces ~= nil then
+		for workspaceName, workspaceData in pairs(rawManifest.workspaces) do
+			if workspaceData.testLocations ~= nil then
+				mergeDiscoveredTests(
+					normalizedManifest.tests,
+					workspaceData.testLocations,
+					normalizedFilePath,
+					workspaces[workspaceName].mounts,
+					`duplicate test suite in workspace {workspaceName}`
+				)
+			end
 		end
 	end
 

@@ -1,4 +1,5 @@
 local manifestRunner = require("@src/runner/manifest")
+local runner = require("@src/runner/run")
 
 local m = {}
 
@@ -38,6 +39,29 @@ function m.infersWorkspaceForScript()
 
 	assert(#mounts >= 3)
 	assert(foundGameMount)
+end
+
+function m.discoversWorkspaceLocalTestLocations()
+	local manifest = manifestRunner.loadManifest("test/workspace-test-locations/manifest.lua")
+
+	assert(manifest.tests["game/unit/game_workspace_unit"] ~= nil)
+	assert(manifest.tests["hub/unit/hub_workspace_unit"] ~= nil)
+
+	local results = runner.runSelections({
+		{
+			kind = "suite",
+			manifest = manifest,
+			suiteName = "game/unit/game_workspace_unit",
+		},
+		{
+			kind = "suite",
+			manifest = manifest,
+			suiteName = "hub/unit/hub_workspace_unit",
+		},
+	})
+
+	assert(results.success)
+	assert(results.total == 2)
 end
 
 return m
