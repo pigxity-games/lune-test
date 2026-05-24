@@ -4,6 +4,9 @@ return {
 	createEnvironment = function(config)
 		return Environment.new(config)
 	end,
+	getEnvironment = function()
+		return Environment.getActiveEnvironment()
+	end,
 	Environment = Environment,
 	Instance = require("./Instance"),
 	Signal = require("./Signal"),

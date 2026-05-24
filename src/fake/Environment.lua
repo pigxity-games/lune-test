@@ -14,6 +14,9 @@ local Vector3 = require("./Vector3")
 local Environment = {}
 Environment.__index = Environment
 
+local activeEnvironment = nil
+local activeInstallController = nil
+
 local defaultAvailableServices = {
 	"CollectionService",
 	"MemoryStoreService",
@@ -166,6 +169,9 @@ function Environment.new(config)
 		_persistenceAdapters = shallowClone(config.persistenceAdapters),
 		_serviceOverrides = shallowClone(config.serviceOverrides),
 		_reservedServerCounter = 0,
+		_customGlobals = {},
+		_installController = activeInstallController,
+		_isBaseEnvironment = false,
 	}, Environment)
 
 	self.scheduler = Scheduler.new({
@@ -238,6 +244,18 @@ function Environment.new(config)
 	self:_refreshGlobals()
 
 	return self
+end
+
+function Environment.getActiveEnvironment()
+	return activeEnvironment
+end
+
+function Environment.setActiveEnvironment(environment)
+	activeEnvironment = environment
+end
+
+function Environment.setActiveInstallController(controller)
+	activeInstallController = controller
 end
 
 function Environment:_newInstance(className: string, parent)
@@ -981,6 +999,9 @@ function Environment:configure(config)
 end
 
 function Environment:reset(config)
+	local controller = self._installController
+	local isBaseEnvironment = self._isBaseEnvironment
+	local customGlobals = self._customGlobals
 	local replacement = Environment.new(config or self._initialConfig)
 
 	for key in pairs(self) do
@@ -991,7 +1012,27 @@ function Environment:reset(config)
 		self[key] = value
 	end
 
+	self._installController = controller
+	self._isBaseEnvironment = isBaseEnvironment
+	self._customGlobals = customGlobals
+
+	if activeEnvironment == self and controller ~= nil and controller.refreshActive ~= nil then
+		controller:refreshActive()
+	end
+
 	return self
+end
+
+function Environment:install()
+	local controller = self._installController
+	assert(controller ~= nil, "Environment install requires an active sandbox")
+	controller:installEnvironment(self)
+end
+
+function Environment:uninstall()
+	local controller = self._installController
+	assert(controller ~= nil, "Environment uninstall requires an active sandbox")
+	controller:uninstallEnvironment(self)
 end
 
 function Environment:inspectTree(root)

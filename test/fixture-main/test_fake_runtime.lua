@@ -13,7 +13,16 @@ local function assertSequenceEqual(actual, expected, label)
 end
 
 local function assertContains(haystack: string, needle: string, label)
-	assert(haystack:find(needle, 1, true) ~= nil, label or string.format('expected "%s" to contain "%s"', haystack, needle))
+	assert(
+		haystack:find(needle, 1, true) ~= nil,
+		label or string.format('expected "%s" to contain "%s"', haystack, needle)
+	)
+end
+
+local function assertError(fun, contains)
+	local ok, err = pcall(fun)
+	assert(not ok)
+	assertContains(err, contains)
 end
 
 function m.servicesAreStableAndConfigurable()
@@ -898,6 +907,138 @@ function m.waitForChildImmediateTimeoutAndNoSchedulerErrors()
 	end)
 	assert(not ok)
 	assertContains(err, "requires a scheduler")
+end
+
+local function setupMultiEnvTest()
+	local env1 = createEnvironment({})
+	local env2 = createEnvironment({})
+
+	local baseEnvInstance = Instance.new("Folder")
+	baseEnvInstance.Name = "BaseEnv"
+	baseEnvInstance.Parent = workspace
+
+	local env1Folder = env1.Instance.new("Folder")
+	env1Folder.Name = "Env1"
+	env1Folder.Parent = env1.globals.workspace
+
+	local env2Folder = env2.Instance.new("Folder")
+	env2Folder.Name = "Env2"
+	env2Folder.Parent = env2.globals.workspace
+
+	return env1, env2, env1Folder, env2Folder, baseEnvInstance
+end
+
+function m.multiEnvironmentParenting()
+	local env1, env2, env1Folder, env2Folder, baseEnvFolder = setupMultiEnvTest()
+
+	env2Folder.Parent = workspace
+	env1Folder.Parent = env2Folder
+
+	assertEqual(env2Folder.Parent, game:GetService("Workspace"))
+	assertEqual(env1Folder.Parent, game:GetService("Workspace"):FindFirstChild("Env2"))
+
+	assert(workspace:FindFirstChild("Env2") ~= nil)
+	assert(workspace:FindFirstChild("Env2"):FindFirstChild("Env1") ~= nil)
+
+	assertEqual(env1.globals.workspace:FindFirstChild("Env1"), nil)
+	assertEqual(env2.globals.workspace:FindFirstChild("Env2"), nil)
+end
+
+function m.environmentInstallUninstall()
+	local env1, env2, env1Folder, env2Folder, baseEnvFolder = setupMultiEnvTest()
+
+	local function baseWorkspaceCheck()
+		assert(env1 ~= env2)
+		assert(env1Folder ~= env2Folder)
+		assertEqual(env1Folder.Name, "Env1") --can access properties
+
+		assertEqual(_G.Test, "HelloWorld")
+		assertEqual(workspace:FindFirstChild("Env1"), nil)
+		assertEqual(workspace:FindFirstChild("Env2"), nil)
+		assert(workspace:FindFirstChild("BaseEnv") ~= nil)
+	end
+
+	local function otherWorkspaceCheck(current, other)
+		assertEqual(_G.Test, nil)
+		assert(workspace:FindFirstChild(current) ~= nil)
+		assertEqual(workspace:FindFirstChild("BaseEnv"), nil)
+		assertEqual(workspace:FindFirstChild(other), nil)
+	end
+
+	_G.Test = "HelloWorld"
+
+	baseWorkspaceCheck()
+
+	env1:install()
+
+	otherWorkspaceCheck("Env1", "Env2")
+
+	env1:uninstall()
+
+	baseWorkspaceCheck()
+
+	env1:install()
+	env2:install() --install without uninstall switches workspaces
+
+	otherWorkspaceCheck("Env2", "Env1")
+
+	assertError(function()
+		env1:uninstall()
+	end, "not active")
+
+	env2:uninstall()
+
+	baseWorkspaceCheck()
+end
+
+function m.getEnvironmentReturnsCurrentEnvironment()
+	local env = getEnvironment()
+
+	assertEqual(env.game:GetService("RunService"), game:GetService("RunService"))
+	assertEqual(env.game:GetService("CollectionService"), game:GetService("CollectionService"))
+	assertEqual(env.game:GetService("Players"), game:GetService("Players"))
+	assertEqual(env.game:GetService("Workspace"), game:GetService("Workspace"))
+	assertEqual(env.game:GetService("MemoryStoreService"), game:GetService("MemoryStoreService"))
+	assertEqual(env.game:GetService("TeleportService"), game:GetService("TeleportService"))
+
+	local runService = game:GetService("RunService")
+	local teleportService = game:GetService("TeleportService")
+	local playersService = game:GetService("Players")
+
+	env:configure({
+		isStudio = false,
+		isClient = false,
+		isServer = true,
+		privateServerId = "after",
+		privateServerOwnerId = 88,
+		reservedServerAccessCode = "new-code",
+	})
+
+	assert(not runService:IsStudio())
+	assert(not runService:IsClient())
+	assert(runService:IsServer())
+	assertEqual(teleportService.PrivateServerId, "after")
+	assertEqual(teleportService.PrivateServerOwnerId, 88)
+	assertEqual(teleportService.ReservedServerAccessCode, "new-code")
+
+	local oldRunService = runService
+	local oldPlayersService = playersService
+	local oldLocalPlayer = env.globals.LocalPlayer
+
+	env:reset({
+		activePlayers = {},
+		isClient = false,
+	})
+
+	assert(env.game:GetService("RunService") ~= oldRunService)
+	assert(env.game:GetService("Players") ~= oldPlayersService)
+	assert(env.globals.LocalPlayer == nil)
+	assertEqual(#env.game:GetService("Players"):GetPlayers(), 0)
+	assert(oldLocalPlayer ~= env.globals.LocalPlayer)
+
+	assertError(function()
+		env:uninstall()
+	end, "Cannot uninstall the base environment")
 end
 
 return m

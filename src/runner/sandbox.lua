@@ -1,5 +1,6 @@
 local fs = require("@lune/fs")
 
+local Environment = require("../fake/Environment")
 local fake = require("../fake/index")
 local paths = require("./paths")
 
@@ -95,8 +96,125 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	local environment = fake.createEnvironment(runtimeConfig)
 	local sandboxGlobals = setmetatable({}, { __index = baseGlobals })
 	local installedGlobalsSnapshot = nil
+	local installedGlobalPresence = {}
+	local installedKeys = {}
 	local services = environment._services
 	local game = environment.game
+	local robloxRequire
+
+	local controller = {}
+
+	local function composeSandboxValues(targetEnvironment, includeCustomGlobals)
+		local values = {}
+
+		for key, value in pairs(targetEnvironment.globals) do
+			values[key] = value
+		end
+
+		for key, value in pairs(fake) do
+			values[key] = value
+		end
+
+		values._G = sandboxGlobals
+		values.game = targetEnvironment.game
+		values.require = robloxRequire
+		values.script = sandboxGlobals.script
+		values.__currentFilePath = sandboxGlobals.__currentFilePath
+
+		if includeCustomGlobals then
+			for key, value in pairs(targetEnvironment._customGlobals or {}) do
+				values[key] = value
+			end
+		end
+
+		return values
+	end
+
+	local function captureCustomGlobals(targetEnvironment)
+		local baseline = composeSandboxValues(targetEnvironment, false)
+		local customGlobals = {}
+
+		for key, value in pairs(sandboxGlobals) do
+			if baseline[key] ~= value then
+				customGlobals[key] = value
+			end
+		end
+
+		targetEnvironment._customGlobals = customGlobals
+	end
+
+	local function applyEnvironmentGlobals(targetEnvironment)
+		local values = composeSandboxValues(targetEnvironment, true)
+		local nextInstalledKeys = {}
+
+		for key in pairs(values) do
+			nextInstalledKeys[key] = true
+		end
+
+		for key in pairs(sandboxGlobals) do
+			if nextInstalledKeys[key] == nil then
+				sandboxGlobals[key] = nil
+
+				if installedGlobalsSnapshot ~= nil and installedGlobalPresence[key] then
+					baseGlobals[key] = nil
+				end
+			end
+		end
+
+		for key, value in pairs(values) do
+			sandboxGlobals[key] = value
+
+			if installedGlobalsSnapshot ~= nil then
+				if not installedGlobalPresence[key] then
+					installedGlobalsSnapshot[key] = baseGlobals[key]
+					installedGlobalPresence[key] = true
+				end
+
+				baseGlobals[key] = value
+			end
+		end
+
+		installedKeys = nextInstalledKeys
+	end
+
+	function controller:refreshActive()
+		applyEnvironmentGlobals(fake.getEnvironment())
+	end
+
+	function controller:installEnvironment(targetEnvironment)
+		local currentEnvironment = fake.getEnvironment()
+
+		if currentEnvironment == targetEnvironment then
+			return
+		end
+
+		if currentEnvironment ~= nil then
+			captureCustomGlobals(currentEnvironment)
+		end
+
+		Environment.setActiveEnvironment(targetEnvironment)
+		applyEnvironmentGlobals(targetEnvironment)
+	end
+
+	function controller:uninstallEnvironment(targetEnvironment)
+		if targetEnvironment._isBaseEnvironment then
+			error("Cannot uninstall the base environment", 2)
+		end
+
+		local currentEnvironment = fake.getEnvironment()
+
+		if currentEnvironment ~= targetEnvironment then
+			error("Cannot uninstall an environment that is not active", 2)
+		end
+
+		captureCustomGlobals(targetEnvironment)
+		self:installEnvironment(environment)
+	end
+
+	environment._installController = controller
+	environment._isBaseEnvironment = true
+	Environment.setActiveInstallController(controller)
+	Environment.setActiveEnvironment(environment)
 
 	local function createInstance(name: string, className: string, parent)
 		local instance = environment.Instance.new(className)
@@ -406,7 +524,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		return result
 	end
 
-	local function robloxRequire(target)
+	function robloxRequire(target)
 		if type(target) == "string" then
 			local modulePath = resolveStringRequire(target)
 			local scriptInstance = ensureInstanceForModulePath(modulePath)
@@ -430,34 +548,19 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	end
 
 	local function install()
-		for key, value in pairs(environment.globals) do
-			sandboxGlobals[key] = value
+		if installedGlobalsSnapshot ~= nil then
+			return
 		end
 
-		for key, value in pairs(fake) do
-			sandboxGlobals[key] = value
-		end
-
-		sandboxGlobals._G = sandboxGlobals
-		sandboxGlobals.game = game
-		sandboxGlobals.require = robloxRequire
-
-		local keysToInstall = {
-			"_G",
-			"game",
-			"require",
-			"script",
-			"__currentFilePath",
-		}
-
-		for globalName in pairs(sandboxGlobals) do
-			table.insert(keysToInstall, globalName)
-		end
+		Environment.setActiveInstallController(controller)
+		Environment.setActiveEnvironment(environment)
+		applyEnvironmentGlobals(environment)
 
 		installedGlobalsSnapshot = {}
 
-		for _, key in ipairs(keysToInstall) do
+		for key in pairs(installedKeys) do
 			installedGlobalsSnapshot[key] = baseGlobals[key]
+			installedGlobalPresence[key] = true
 			baseGlobals[key] = sandboxGlobals[key]
 		end
 	end
@@ -472,6 +575,10 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		end
 
 		installedGlobalsSnapshot = nil
+		installedGlobalPresence = {}
+		installedKeys = {}
+		Environment.setActiveEnvironment(nil)
+		Environment.setActiveInstallController(nil)
 	end
 
 	return {
