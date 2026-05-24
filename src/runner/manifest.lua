@@ -41,7 +41,8 @@ local function normalizeModulePath(modulePath: string, manifestFilePath: string)
 	local normalizedModulePath = modulePath
 
 	if isFileModule then
-		normalizedModulePath = paths.sourceFilePathWithoutExtension(paths.resolvePathFromFile(manifestFilePath, modulePath))
+		normalizedModulePath =
+			paths.sourceFilePathWithoutExtension(paths.resolvePathFromFile(manifestFilePath, modulePath))
 	end
 
 	return normalizedModulePath, isFileModule
@@ -168,7 +169,10 @@ local function discoverTestsFromLocations(testLocations, manifestFilePath: strin
 		listFilesRecursive(searchRoot, candidateFiles)
 
 		for _, candidateFile in ipairs(candidateFiles) do
-			if candidateFile:match("%.luau?$") and globMatchesPath(resolvedPattern, paths.sourceFilePathWithoutExtension(candidateFile)) then
+			if
+				candidateFile:match("%.luau?$")
+				and globMatchesPath(resolvedPattern, paths.sourceFilePathWithoutExtension(candidateFile))
+			then
 				local testName = discoveredTestName(manifestFilePath, candidateFile)
 
 				assert(discoveredTests[testName] == nil, `duplicate test suite: {testName}`)
@@ -187,7 +191,13 @@ local function discoverTestsFromLocations(testLocations, manifestFilePath: strin
 	return discoveredTests
 end
 
-local function mergeDiscoveredTests(normalizedTests, testLocations, manifestFilePath: string, mounts, errorPrefix: string)
+local function mergeDiscoveredTests(
+	normalizedTests,
+	testLocations,
+	manifestFilePath: string,
+	mounts,
+	errorPrefix: string
+)
 	local discoveredTests = discoverTestsFromLocations(testLocations, manifestFilePath, mounts)
 
 	for testName, testData in pairs(discoveredTests) do
@@ -393,8 +403,14 @@ function manifestRunner.validateManifest(manifest)
 
 		for index, mountData in ipairs(testData.mounts) do
 			assert(type(mountData) == "table", `manifest.tests.{testName}.mounts[{index}] must be a table`)
-			assert(type(mountData.mountPath) == "string", `manifest.tests.{testName}.mounts[{index}].mountPath must be a string`)
-			assert(type(mountData.moduleRoot) == "string", `manifest.tests.{testName}.mounts[{index}].moduleRoot must be a string`)
+			assert(
+				type(mountData.mountPath) == "string",
+				`manifest.tests.{testName}.mounts[{index}].mountPath must be a string`
+			)
+			assert(
+				type(mountData.moduleRoot) == "string",
+				`manifest.tests.{testName}.mounts[{index}].moduleRoot must be a string`
+			)
 		end
 	end
 
@@ -445,13 +461,8 @@ local function loadManifestInternal(filePath: string, seenPaths)
 
 		for testName, testData in pairs(rawManifest.tests) do
 			assert(normalizedManifest.tests[testName] == nil, `duplicate test suite: {testName}`)
-			normalizedManifest.tests[testName] = normalizeTest(
-				testName,
-				testData,
-				normalizedFilePath,
-				manifestMounts,
-				workspaces
-			)
+			normalizedManifest.tests[testName] =
+				normalizeTest(testName, testData, normalizedFilePath, manifestMounts, workspaces)
 		end
 	end
 
@@ -567,7 +578,11 @@ end
 function manifestRunner.findNearestManifest(startPath: string): string?
 	local currentPath = paths.normalizeFilesystemPath(startPath)
 
-	if paths.isSourceFilePath(currentPath) or fs.isFile(currentPath) or paths.resolveExistingSourceFile(currentPath) ~= nil then
+	if
+		paths.isSourceFilePath(currentPath)
+		or fs.isFile(currentPath)
+		or paths.resolveExistingSourceFile(currentPath) ~= nil
+	then
 		currentPath = paths.dirname(currentPath)
 	end
 

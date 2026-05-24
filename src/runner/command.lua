@@ -79,10 +79,8 @@ function command.buildSelections(options)
 			local sourceFilePath = paths.resolveExistingSourceFile(selection)
 			assert(sourceFilePath ~= nil, `script file not found: {selection}`)
 
-			local manifest, manifestPath = loadManifestCached(
-				manifestCache,
-				resolveScriptManifestPath(sourceFilePath, options.manifestPath)
-			)
+			local manifest, manifestPath =
+				loadManifestCached(manifestCache, resolveScriptManifestPath(sourceFilePath, options.manifestPath))
 
 			table.insert(plannedSelections, {
 				kind = "script",

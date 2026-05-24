@@ -80,6 +80,8 @@ return {
 				configureAndResetRefreshLiveServicesAndObjects = {},
 				instanceEventSemanticsAndChildClearing = {},
 				waitForChildImmediateTimeoutAndNoSchedulerErrors = {},
+				environmentInstallUninstall = {},
+				multiEnvironmentParentingErrors = {},
 			},
 		},
 	},

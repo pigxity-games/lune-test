@@ -492,7 +492,8 @@ function Environment:_createCollectionService()
 	end
 	service.GetInstanceRemovedSignal = function(_, tag: string)
 		local state = ensureTagState(self._tagState, tag)
-		state.removedSignal = state.removedSignal or Signal.new(`CollectionService[{tag}].Removed`, self._signalRegistry)
+		state.removedSignal = state.removedSignal
+			or Signal.new(`CollectionService[{tag}].Removed`, self._signalRegistry)
 		return state.removedSignal
 	end
 	return service
@@ -895,7 +896,9 @@ function Environment:replaceCharacter(player, characterConfig)
 		character = characterConfig
 	else
 		character = self:_newInstance("Model")
-		character.Name = if type(characterConfig) == "table" and characterConfig.name ~= nil then characterConfig.name else player.Name
+		character.Name = if type(characterConfig) == "table" and characterConfig.name ~= nil
+			then characterConfig.name
+			else player.Name
 	end
 
 	character.Parent = self:getService("Workspace")
@@ -908,11 +911,12 @@ end
 function Environment:spawnClient(config)
 	config = config or {}
 
-	local player = config.player or self:addPlayer({
-		name = config.name,
-		userId = config.userId,
-		createCharacter = config.createCharacter,
-	})
+	local player = config.player
+		or self:addPlayer({
+			name = config.name,
+			userId = config.userId,
+			createCharacter = config.createCharacter,
+		})
 
 	local sharedPlayers = self:getService("Players")
 	local playersProxy = createPlayersProxy(sharedPlayers, player)

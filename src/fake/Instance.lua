@@ -102,10 +102,7 @@ end
 
 local function assertSupportedClassName(className: string, allowedClassNames)
 	if not ClassData.isSupported(className) then
-		error(
-			`Unsupported fake instance type "{className}". Available types: {joinNames(ClassData.list())}`,
-			3
-		)
+		error(`Unsupported fake instance type "{className}". Available types: {joinNames(ClassData.list())}`, 3)
 	end
 
 	if allowedClassNames == nil or allowedClassNames[className] then
@@ -120,10 +117,7 @@ local function assertSupportedClassName(className: string, allowedClassNames)
 
 	table.sort(available)
 
-	error(
-		`Fake instance type "{className}" is disabled in this environment. Enabled types: {joinNames(available)}`,
-		3
-	)
+	error(`Fake instance type "{className}" is disabled in this environment. Enabled types: {joinNames(available)}`, 3)
 end
 
 local function setParent(self, newParent)
