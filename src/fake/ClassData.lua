@@ -27,6 +27,7 @@ local parentByClass = {
 	PlayerScripts = "Instance",
 	ModuleScript = "Instance",
 	LocalScript = "Instance",
+	TeleportOptions = "Instance",
 }
 
 local defaultPropsByClass = {
@@ -71,6 +72,10 @@ local defaultPropsByClass = {
 	PlayerScripts = {},
 	ModuleScript = {},
 	LocalScript = {},
+	TeleportOptions = {
+		ReservedServerAccessCode = "",
+		TeleportData = nil,
+	},
 }
 
 function ClassData.getParent(className: string): string?

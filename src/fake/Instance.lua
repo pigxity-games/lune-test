@@ -215,8 +215,26 @@ end
 
 function InstanceMethods:FindFirstChildOfClass(className: string)
 	for _, child in ipairs(self._children) do
+		if child.ClassName == className then
+			return child
+		end
+	end
+
+	return nil
+end
+
+function InstanceMethods:FindFirstChildWhichIsA(className: string, recursive: boolean?)
+	for _, child in ipairs(self._children) do
 		if child:IsA(className) then
 			return child
+		end
+
+		if recursive then
+			local descendant = child:FindFirstChildWhichIsA(className, true)
+
+			if descendant ~= nil then
+				return descendant
+			end
 		end
 	end
 

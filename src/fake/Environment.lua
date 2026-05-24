@@ -29,6 +29,13 @@ local defaultAvailableServices = {
 	"Workspace",
 }
 
+local defaultEnum = {
+	SortDirection = {
+		Ascending = "Ascending",
+		Descending = "Descending",
+	},
+}
+
 local function cloneArray(items)
 	local copy = {}
 
@@ -94,6 +101,7 @@ local function ensureTagState(tagState, tag: string)
 		state = {
 			instances = {},
 			set = {},
+			presentSet = {},
 			addedSignal = nil,
 			removedSignal = nil,
 		}
@@ -210,6 +218,7 @@ function Environment.new(config)
 	self.game.FindService = function(_, serviceName: string)
 		return self._services[serviceName]
 	end
+	self:_syncDataModelProperties()
 
 	for _, serviceName in ipairs(defaultAvailableServices) do
 		if self._availableServices[serviceName] then
@@ -258,6 +267,61 @@ function Environment.setActiveInstallController(controller)
 	activeInstallController = controller
 end
 
+function Environment:_syncDataModelProperties()
+	self.game.PrivateServerId = self._flags.privateServerId
+	self.game.PrivateServerOwnerId = self._flags.privateServerOwnerId
+	self.game.ReservedServerAccessCode = self._flags.reservedServerAccessCode
+end
+
+function Environment:_isInDataModel(instance): boolean
+	local cursor = instance
+
+	while cursor ~= nil do
+		if cursor == self.game then
+			return true
+		end
+
+		cursor = cursor.Parent
+	end
+
+	return false
+end
+
+function Environment:_setTaggedInstancePresence(state, instance, isPresent: boolean)
+	local wasPresent = state.presentSet[instance] == true
+
+	if wasPresent == isPresent then
+		return
+	end
+
+	state.presentSet[instance] = if isPresent then true else nil
+
+	if isPresent then
+		if state.addedSignal ~= nil then
+			state.addedSignal:Fire(instance)
+		end
+	else
+		if state.removedSignal ~= nil then
+			state.removedSignal:Fire(instance)
+		end
+	end
+end
+
+function Environment:_refreshTaggedInstancePresence(instance)
+	local tags = instance._collectionTags
+
+	if tags == nil then
+		return
+	end
+
+	local isPresent = self:_isInDataModel(instance)
+
+	for tag in pairs(tags) do
+		local state = ensureTagState(self._tagState, tag)
+		self:_setTaggedInstancePresence(state, instance, isPresent)
+	end
+end
+
 function Environment:_newInstance(className: string, parent)
 	local instance = InstanceModule.new(className, parent, {
 		runtime = self,
@@ -266,6 +330,9 @@ function Environment:_newInstance(className: string, parent)
 	})
 
 	self:_configureInstance(instance)
+	instance.AncestryChanged:Connect(function(changedInstance)
+		self:_onInstanceAncestryChanged(changedInstance)
+	end)
 
 	return instance
 end
@@ -314,6 +381,16 @@ function Environment:_configureInstance(instance)
 			return self:_invokeClient(remote, player, ...)
 		end
 		table.insert(self._remoteInstances, instance)
+		return
+	end
+
+	if instance:IsA("TeleportOptions") then
+		instance.SetTeleportData = function(options, teleportData)
+			options.TeleportData = teleportData
+		end
+		instance.GetTeleportData = function(options)
+			return options.TeleportData
+		end
 	end
 end
 
@@ -459,10 +536,7 @@ function Environment:_createCollectionService()
 		table.insert(state.instances, instance)
 		instance._collectionTags = instance._collectionTags or {}
 		instance._collectionTags[tag] = true
-
-		if state.addedSignal ~= nil then
-			state.addedSignal:Fire(instance)
-		end
+		self:_setTaggedInstancePresence(state, instance, self:_isInDataModel(instance))
 	end
 	service.RemoveTag = function(_, instance, tag: string)
 		local state = self._tagState[tag]
@@ -477,10 +551,7 @@ function Environment:_createCollectionService()
 		if instance._collectionTags ~= nil then
 			instance._collectionTags[tag] = nil
 		end
-
-		if state.removedSignal ~= nil then
-			state.removedSignal:Fire(instance)
-		end
+		self:_setTaggedInstancePresence(state, instance, false)
 	end
 	service.HasTag = function(_, instance, tag: string)
 		local state = self._tagState[tag]
@@ -496,7 +567,7 @@ function Environment:_createCollectionService()
 		local tagged = {}
 
 		for _, instance in ipairs(state.instances) do
-			if not instance._destroyed then
+			if not instance._destroyed and state.presentSet[instance] then
 				table.insert(tagged, instance)
 			end
 		end
@@ -544,16 +615,25 @@ function Environment:_createMemoryStoreService()
 
 		local state = {}
 
+		local function getLiveEntry(key: string)
+			local entry = state[key]
+
+			if entry == nil then
+				return nil
+			end
+
+			if entry.expiresAt ~= nil and entry.expiresAt <= self.scheduler:now() then
+				state[key] = nil
+				return nil
+			end
+
+			return entry
+		end
+
 		map = {
 			GetAsync = function(_, key: string)
-				local entry = state[key]
-
+				local entry = getLiveEntry(key)
 				if entry == nil then
-					return nil
-				end
-
-				if entry.expiresAt ~= nil and entry.expiresAt <= self.scheduler:now() then
-					state[key] = nil
 					return nil
 				end
 
@@ -567,32 +647,69 @@ function Environment:_createMemoryStoreService()
 			end,
 			UpdateAsync = function(_, key: string, transform, expirationSeconds: number?)
 				local oldValue = map:GetAsync(key)
-				local oldEntry = state[key]
+				local oldEntry = getLiveEntry(key)
 				local newValue = transform(oldValue)
 
 				if newValue == nil then
-					state[key] = nil
-				else
-					state[key] = {
-						value = newValue,
-						expiresAt = if expirationSeconds ~= nil
-							then self.scheduler:now() + expirationSeconds
-							else if oldEntry ~= nil then oldEntry.expiresAt else nil,
-					}
+					return nil
 				end
+
+				state[key] = {
+					value = newValue,
+					expiresAt = if expirationSeconds ~= nil
+						then self.scheduler:now() + expirationSeconds
+						else if oldEntry ~= nil then oldEntry.expiresAt else nil,
+				}
 
 				return newValue
 			end,
 			RemoveAsync = function(_, key: string)
 				state[key] = nil
 			end,
+			GetRangeAsync = function(_, sortDirection, count: number?)
+				local items = {}
+
+				for key in pairs(state) do
+					local entry = getLiveEntry(key)
+
+					if entry ~= nil then
+						table.insert(items, {
+							key = key,
+							value = entry.value,
+						})
+					end
+				end
+
+				table.sort(items, function(a, b)
+					if sortDirection == defaultEnum.SortDirection.Descending then
+						return a.key > b.key
+					end
+
+					return a.key < b.key
+				end)
+
+				local limit = math.max(count or #items, 0)
+				local ranged = {}
+
+				for index = 1, math.min(limit, #items) do
+					ranged[index] = items[index]
+				end
+
+				return ranged
+			end,
 			ListItemsAsync = function()
 				local items = {}
 
 				for key in pairs(state) do
+					local entry = getLiveEntry(key)
+
+					if entry == nil then
+						continue
+					end
+
 					table.insert(items, {
 						key = key,
-						value = map:GetAsync(key),
+						value = entry.value,
 					})
 				end
 
@@ -615,27 +732,103 @@ function Environment:_createMemoryStoreService()
 		end
 
 		local items = {}
+		local nextReservationId = 0
+		local nextSequenceNumber = 0
+
+		local function isVisible(item)
+			return item.reservationId == nil
+		end
+
+		local function getLiveItems()
+			local liveItems = {}
+
+			for index = #items, 1, -1 do
+				local item = items[index]
+
+				if item.expiresAt ~= nil and item.expiresAt <= self.scheduler:now() then
+					table.remove(items, index)
+				else
+					table.insert(liveItems, 1, item)
+				end
+			end
+
+			return liveItems
+		end
 
 		queue = {
-			AddAsync = function(_, value)
-				table.insert(items, value)
+			AddAsync = function(_, value, expirationSeconds: number?, priority: number?)
+				nextSequenceNumber += 1
+				table.insert(items, {
+					value = value,
+					reservationId = nil,
+					priority = priority or 0,
+					sequenceNumber = nextSequenceNumber,
+					expiresAt = if expirationSeconds ~= nil then self.scheduler:now() + expirationSeconds else nil,
+				})
 			end,
-			ReadAsync = function(_, count: number?)
+			ReadAsync = function(_, count: number?, allOrNothing, _waitTimeout)
 				local take = math.max(count or 1, 0)
-				local result = {}
+				local selectedItems = {}
+				local liveItems = getLiveItems()
 
-				for _ = 1, take do
-					if #items == 0 then
-						break
+				table.sort(liveItems, function(a, b)
+					if a.priority ~= b.priority then
+						return a.priority > b.priority
 					end
 
-					table.insert(result, table.remove(items, 1))
+					return a.sequenceNumber < b.sequenceNumber
+				end)
+
+				for _, item in ipairs(liveItems) do
+					if isVisible(item) then
+						table.insert(selectedItems, item)
+
+						if #selectedItems >= take then
+							break
+						end
+					end
 				end
 
-				return result
+				if allOrNothing and #selectedItems < take then
+					return {}, nil
+				end
+
+				nextReservationId += 1
+				local reservationId = `queue-{name}-{nextReservationId}`
+				local values = {}
+
+				for index, item in ipairs(selectedItems) do
+					item.reservationId = reservationId
+					values[index] = item.value
+				end
+
+				return values, reservationId
 			end,
-			GetSizeAsync = function()
-				return #items
+			RemoveAsync = function(_, reservationId: string)
+				getLiveItems()
+
+				for index = #items, 1, -1 do
+					if items[index].reservationId == reservationId then
+						table.remove(items, index)
+					end
+				end
+			end,
+			GetSizeAsync = function(_, excludeInvisible: boolean?)
+				local liveItems = getLiveItems()
+
+				if not excludeInvisible then
+					return #liveItems
+				end
+
+				local visibleCount = 0
+
+				for _, item in ipairs(liveItems) do
+					if isVisible(item) then
+						visibleCount += 1
+					end
+				end
+
+				return visibleCount
 			end,
 		}
 
@@ -658,6 +851,16 @@ function Environment:_createTeleportService()
 	service.PrivateServerOwnerId = self._flags.privateServerOwnerId
 	service.ReservedServerAccessCode = self._flags.reservedServerAccessCode
 	service.TeleportAsync = function(_, placeId: number, players, options)
+		local teleportData = nil
+
+		if options ~= nil then
+			if type(options.GetTeleportData) == "function" then
+				teleportData = options:GetTeleportData()
+			else
+				teleportData = options.TeleportData
+			end
+		end
+
 		local request = {
 			placeId = placeId,
 			players = cloneArray(players or {}),
@@ -671,21 +874,24 @@ function Environment:_createTeleportService()
 			args = { options },
 		})
 
-		if options ~= nil and options.TeleportData ~= nil then
+		if teleportData ~= nil then
 			for _, player in ipairs(request.players) do
-				player._teleportData = options.TeleportData
+				player._teleportData = teleportData
 			end
 		end
 
 		return request
 	end
-	service.ReserveServer = function(_, placeId: number)
+	service.ReserveServerAsync = function(_, placeId: number)
 		self._reservedServerCounter += 1
 		local accessCode = `reserved-{placeId}-{self._reservedServerCounter}`
+		local serverId = `private-{placeId}-{self._reservedServerCounter}`
 		self._flags.reservedServerAccessCode = accessCode
 		service.ReservedServerAccessCode = accessCode
-		return accessCode
+		self:_syncDataModelProperties()
+		return accessCode, serverId
 	end
+	service.ReserveServer = service.ReserveServerAsync
 	service.GetLocalPlayerTeleportData = function()
 		if self._localPlayer ~= nil and self._localPlayer._teleportData ~= nil then
 			return self._localPlayer._teleportData
@@ -771,6 +977,7 @@ function Environment:_refreshGlobals()
 		BrickColor = BrickColor,
 		CFrame = CFrame,
 		Color3 = Color3,
+		Enum = defaultEnum,
 		Instance = self.Instance,
 		Random = Random,
 		UDim = UDim,
@@ -806,6 +1013,10 @@ function Environment:_onSchedulerAdvanced(deltaTime: number)
 	runService.Heartbeat:Fire(deltaTime)
 	runService.Stepped:Fire(self.scheduler:now(), deltaTime)
 	runService.RenderStepped:Fire(deltaTime)
+end
+
+function Environment:_onInstanceAncestryChanged(instance)
+	self:_refreshTaggedInstancePresence(instance)
 end
 
 function Environment:_onInstanceDestroying(instance)
@@ -988,6 +1199,8 @@ function Environment:configure(config)
 			self._flags[key] = value
 		end
 	end
+
+	self:_syncDataModelProperties()
 
 	local teleportService = self._services.TeleportService
 

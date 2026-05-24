@@ -65,7 +65,7 @@ return {
 				signalDisconnectPreventsFurtherFires = {},
 				signalDisconnectAllAndDisconnectDuringFire = {},
 				collectionServiceTracksTagsAndCleanup = {},
-				collectionServiceKeepsTagsStableAcrossReparenting = {},
+				collectionServiceSignalsDataModelMembershipChanges = {},
 				remoteEventRoutesAcrossServerAndClients = {},
 				remoteFunctionSupportsInvokeServerAndClient = {},
 				remoteFailuresProduceActionableErrors = {},

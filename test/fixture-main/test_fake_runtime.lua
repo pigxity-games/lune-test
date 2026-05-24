@@ -12,6 +12,19 @@ local function assertSequenceEqual(actual, expected, label)
 	end
 end
 
+local function assertNameSetEqual(actual, expectedNames, label)
+	assertEqual(#actual, #expectedNames, string.format("%s length mismatch", label or "name set"))
+
+	local seen = {}
+	for _, instance in ipairs(actual) do
+		seen[instance.Name] = (seen[instance.Name] or 0) + 1
+	end
+
+	for _, expectedName in ipairs(expectedNames) do
+		assertEqual(seen[expectedName], 1, string.format("%s missing %s", label or "name set", expectedName))
+	end
+end
+
 local function assertContains(haystack: string, needle: string, label)
 	assert(
 		haystack:find(needle, 1, true) ~= nil,
@@ -32,7 +45,6 @@ function m.servicesAreStableAndConfigurable()
 		isClient = false,
 		privateServerId = "private-1",
 		privateServerOwnerId = 77,
-		reservedServerAccessCode = "reserved-seed",
 		activePlayers = {},
 	})
 
@@ -53,9 +65,8 @@ function m.servicesAreStableAndConfigurable()
 	assert(not runService:IsStudio())
 	assert(runService:IsServer())
 	assert(not runService:IsClient())
-	assertEqual(teleportService.PrivateServerId, "private-1")
-	assertEqual(teleportService.PrivateServerOwnerId, 77)
-	assertEqual(teleportService.ReservedServerAccessCode, "reserved-seed")
+	assertEqual(env.game.PrivateServerId, "private-1")
+	assertEqual(env.game.PrivateServerOwnerId, 77)
 end
 
 function m.createEnvironmentIsAvailableAsASandboxGlobal()
@@ -104,8 +115,8 @@ function m.instanceHierarchyAttributesAndSignals()
 		table.insert(attributeChanges, part:GetAttribute("Health"))
 	end)
 
-	part:GetPropertyChangedSignal("Position"):Connect(function(position)
-		table.insert(propertyChanges, tostring(position))
+	part:GetPropertyChangedSignal("Position"):Connect(function()
+		table.insert(propertyChanges, tostring(part.Position))
 	end)
 
 	value.Changed:Connect(function(newValue)
@@ -119,11 +130,21 @@ function m.instanceHierarchyAttributesAndSignals()
 
 	assertSequenceEqual(childAddedNames, { "Inventory", "Hammer", "Coins" }, "child added order")
 	assertEqual(root:FindFirstChild("Inventory"), folder)
+
 	assertEqual(root:FindFirstChildOfClass("Tool"), tool)
-	assertEqual(tool:FindFirstChildOfClass("BasePart"), part)
+	assertEqual(tool:FindFirstChildWhichIsA("BasePart"), part)
+	assertEqual(tool:FindFirstChildOfClass("Part"), part)
+
+	assertEqual(tool:FindFirstChildWhichIsA("BasePart"), part)
+	assertEqual(tool:FindFirstChildOfClass("Part"), part)
+	assertEqual(tool:FindFirstChildOfClass("BasePart"), nil)
+
 	assertEqual(#root:GetChildren(), 3)
 	assertEqual(#root:GetDescendants(), 4)
 	assert(part:IsA("BasePart"))
+
+	assertEqual(root:FindFirstChildWhichIsA("BasePart"), nil)
+	assertEqual(root:FindFirstChildWhichIsA("BasePart", true), part)
 
 	part.Position = Vector3.new(1, 2, 3)
 	assertEqual(part.CFrame.Position.X, 1)
@@ -139,6 +160,18 @@ function m.instanceHierarchyAttributesAndSignals()
 	part:SetAttribute("Health", 200)
 	assertSequenceEqual(attributeChanges, { 100, 200 }, "attribute changes")
 	assertEqual(part:GetAttribute("Health"), 200)
+
+	local healthRemoved = false
+
+	part:GetAttributeChangedSignal("HealthRemovedTest"):Connect(function()
+		healthRemoved = part:GetAttribute("HealthRemovedTest") == nil
+	end)
+
+	part:SetAttribute("HealthRemovedTest", 10)
+	part:SetAttribute("HealthRemovedTest", nil)
+
+	assertEqual(part:GetAttribute("HealthRemovedTest"), nil)
+	assert(healthRemoved)
 
 	value.Value = 15
 	assertSequenceEqual(changedValues, { 15 }, "number value changes")
@@ -238,8 +271,15 @@ function m.collectionServiceTracksTagsAndCleanup()
 	collectionService:AddTag(first, "Enemy")
 	collectionService:AddTag(second, "Enemy")
 
-	local tagged = collectionService:GetTagged("Enemy")
-	assertSequenceEqual({ tagged[1].Name, tagged[2].Name }, { "First", "Second" }, "tag order")
+	local lateAdded = 0
+
+	collectionService:GetInstanceAddedSignal("Enemy"):Connect(function()
+		lateAdded += 1
+	end)
+
+	assertEqual(lateAdded, 0)
+
+	assertNameSetEqual(collectionService:GetTagged("Enemy"), { "First", "Second" }, "tagged instances")
 	assert(collectionService:HasTag(first, "Enemy"))
 	assertSequenceEqual(added, { "First", "Second" }, "added tags")
 
@@ -252,7 +292,7 @@ function m.collectionServiceTracksTagsAndCleanup()
 	assertEqual(#collectionService:GetTagged("Enemy"), 0)
 end
 
-function m.collectionServiceKeepsTagsStableAcrossReparenting()
+function m.collectionServiceSignalsDataModelMembershipChanges()
 	local env = createEnvironment({
 		activePlayers = {},
 	})
@@ -273,14 +313,16 @@ function m.collectionServiceKeepsTagsStableAcrossReparenting()
 
 	collectionService:AddTag(tagged, "Stable")
 	tagged.Parent = nil
+	assertEqual(#collectionService:GetTagged("Stable"), 0)
+	assert(collectionService:HasTag(tagged, "Stable"))
 	tagged.Parent = env.globals.ReplicatedStorage
 
 	local taggedResults = collectionService:GetTagged("Stable")
 	assertEqual(#taggedResults, 1)
 	assertEqual(taggedResults[1], tagged)
 	assert(collectionService:HasTag(tagged, "Stable"))
-	assertEqual(added, 1)
-	assertEqual(removed, 0)
+	assertEqual(added, 2)
+	assertEqual(removed, 1)
 end
 
 function m.remoteEventRoutesAcrossServerAndClients()
@@ -325,6 +367,16 @@ function m.remoteEventRoutesAcrossServerAndClients()
 	assertSequenceEqual(primaryMessages, { "direct", "broadcast" }, "primary client events")
 	assertSequenceEqual(secondaryMessages, { "broadcast" }, "secondary client events")
 	assertEqual(#env:inspectRemoteTraffic(), 5)
+
+	local tupleArgs = {}
+
+	remote.OnServerEvent:Connect(function(player, a, b, c)
+		tupleArgs = { player.Name, a, b, c }
+	end)
+
+	remote:FireServer("multi", 2, true)
+
+	assertSequenceEqual(tupleArgs, { "Primary", "multi", 2, true }, "server remote tuple args")
 end
 
 function m.remoteFunctionSupportsInvokeServerAndClient()
@@ -666,24 +718,32 @@ function m.memoryStoreTeleportDiagnosticsAndResetWork()
 	assertEqual(map:GetAsync("coins"), 5)
 	map:UpdateAsync("coins", function(value)
 		return value + 10
-	end)
+	end, 1)
 	assertEqual(map:GetAsync("coins"), 15)
-	queue:AddAsync("a")
-	queue:AddAsync("b")
-	assertSequenceEqual(queue:ReadAsync(2), { "a", "b" }, "queue order")
+	queue:AddAsync("a", 60)
+	queue:AddAsync("b", 60)
+	local queuedValues, queuedId = queue:ReadAsync(2, false, 0)
+	assertSequenceEqual(queuedValues, { "a", "b" }, "queue order")
+	assertEqual(type(queuedId), "string")
+	queue:RemoveAsync(queuedId)
 
 	env.scheduler:advance(1)
 	assert(map:GetAsync("coins") == nil)
 
-	teleportService:ReserveServer(1234)
-	teleportService:TeleportAsync(1234, { env.globals.Players.LocalPlayer }, {
-		TeleportData = {
-			round = 2,
-		},
+	local reservedServerAccessCode, reservedServerId = teleportService:ReserveServerAsync(1234)
+	assertEqual(type(reservedServerAccessCode), "string")
+	assertEqual(type(reservedServerId), "string")
+
+	local teleportOptions = env.Instance.new("TeleportOptions")
+	teleportOptions.ReservedServerAccessCode = reservedServerAccessCode
+	teleportOptions:SetTeleportData({
+		round = 2,
 	})
 
-	assertEqual(teleportService.PrivateServerId, "ps-55")
-	assertEqual(teleportService.PrivateServerOwnerId, 55)
+	teleportService:TeleportAsync(1234, { env.globals.Players.LocalPlayer }, teleportOptions)
+
+	assertEqual(env.game.PrivateServerId, "ps-55")
+	assertEqual(env.game.PrivateServerOwnerId, 55)
 	assertEqual(teleportService:GetLocalPlayerTeleportData().round, 2)
 	assert(env:inspectTree():find("ReplicatedStorage") ~= nil)
 	assert(#env:inspectSignals() > 0)
@@ -706,32 +766,72 @@ function m.memoryStoreAdditionalMapAndQueueBranches()
 	local map = memoryStoreService:GetSortedMap("Inventory")
 	local queue = memoryStoreService:GetQueue("BuildQueue")
 
-	map:SetAsync("b", 2)
-	map:SetAsync("a", 1)
+	map:SetAsync("b", 2, 60)
+	map:SetAsync("a", 1, 60)
 
-	local listed = map:ListItemsAsync()
+	local listed = map:GetRangeAsync(Enum.SortDirection.Ascending, 2)
 	assertEqual(#listed, 2)
 	assertEqual(listed[1].key, "a")
 	assertEqual(listed[1].value, 1)
 	assertEqual(listed[2].key, "b")
 	assertEqual(listed[2].value, 2)
 
+	local descending = map:GetRangeAsync(Enum.SortDirection.Descending, 2)
+
+	assertEqual(#descending, 2)
+	assertEqual(descending[1].key, "b")
+	assertEqual(descending[1].value, 2)
+	assertEqual(descending[2].key, "a")
+	assertEqual(descending[2].value, 1)
+
 	map:RemoveAsync("a")
 	assert(map:GetAsync("a") == nil)
-	map:UpdateAsync("b", function()
+	local canceledValue = map:UpdateAsync("b", function()
 		return nil
-	end)
+	end, 60)
+	assert(canceledValue == nil)
+	assertEqual(map:GetAsync("b"), 2)
+
+	map:RemoveAsync("b")
 	assert(map:GetAsync("b") == nil)
 
-	queue:AddAsync("first")
-	queue:AddAsync("second")
-	queue:AddAsync("third")
+	queue:AddAsync("first", 60)
+	queue:AddAsync("second", 60)
+	queue:AddAsync("third", 60)
 	assertEqual(queue:GetSizeAsync(), 3)
-	assertSequenceEqual(queue:ReadAsync(2), { "first", "second" }, "partial queue read")
+	local partialValues, partialId = queue:ReadAsync(2, false, 0)
+	assertSequenceEqual(partialValues, { "first", "second" }, "partial queue read")
+	assertEqual(type(partialId), "string")
+	assertEqual(queue:GetSizeAsync(false), 3)
+	assertEqual(queue:GetSizeAsync(true), 1)
+
+	queue:RemoveAsync(partialId)
 	assertEqual(queue:GetSizeAsync(), 1)
-	assertSequenceEqual(queue:ReadAsync(0), {}, "zero queue read")
-	assertSequenceEqual(queue:ReadAsync(5), { "third" }, "oversized queue read")
+
+	local remainingValues, remainingId = queue:ReadAsync(5, false, 0)
+	assertSequenceEqual(remainingValues, { "third" }, "oversized queue read")
+	assertEqual(type(remainingId), "string")
+	queue:RemoveAsync(remainingId)
 	assertEqual(queue:GetSizeAsync(), 0)
+
+	local priorityQueue = memoryStoreService:GetQueue("PriorityQueue")
+
+	priorityQueue:AddAsync("low", 60, 1)
+	priorityQueue:AddAsync("high", 60, 10)
+
+	local priorityValues, priorityId = priorityQueue:ReadAsync(2, false, 0)
+
+	assertSequenceEqual(priorityValues, { "high", "low" }, "priority queue order")
+	assertEqual(type(priorityId), "string")
+	priorityQueue:RemoveAsync(priorityId)
+
+	local allOrNothingQueue = memoryStoreService:GetQueue("AllOrNothingQueue")
+
+	allOrNothingQueue:AddAsync("only", 60)
+
+	local allOrNothingValues = allOrNothingQueue:ReadAsync(2, true, 0)
+
+	assertEqual(#allOrNothingValues, 0)
 end
 
 function m.environmentAvailabilityOverridesAndErrorsAreActionable()
@@ -784,7 +884,6 @@ function m.configureAndResetRefreshLiveServicesAndObjects()
 		isServer = false,
 		privateServerId = "before",
 		privateServerOwnerId = 5,
-		reservedServerAccessCode = "seed",
 		activePlayers = {
 			{
 				name = "ResetPlayer",
@@ -795,23 +894,19 @@ function m.configureAndResetRefreshLiveServicesAndObjects()
 	})
 	local runService = env.game:GetService("RunService")
 	local playersService = env.game:GetService("Players")
-	local teleportService = env.game:GetService("TeleportService")
-
 	env:configure({
 		isStudio = false,
 		isClient = false,
 		isServer = true,
 		privateServerId = "after",
 		privateServerOwnerId = 88,
-		reservedServerAccessCode = "new-code",
 	})
 
 	assert(not runService:IsStudio())
 	assert(not runService:IsClient())
 	assert(runService:IsServer())
-	assertEqual(teleportService.PrivateServerId, "after")
-	assertEqual(teleportService.PrivateServerOwnerId, 88)
-	assertEqual(teleportService.ReservedServerAccessCode, "new-code")
+	assertEqual(env.game.PrivateServerId, "after")
+	assertEqual(env.game.PrivateServerOwnerId, 88)
 
 	local oldRunService = runService
 	local oldPlayersService = playersService
@@ -857,8 +952,8 @@ function m.instanceEventSemanticsAndChildClearing()
 	grandChild.Changed:Connect(function(propertyName)
 		table.insert(changedProperties, propertyName)
 	end)
-	grandChild:GetPropertyChangedSignal("Name"):Connect(function(newName)
-		table.insert(nameChanges, newName)
+	grandChild:GetPropertyChangedSignal("Name"):Connect(function()
+		table.insert(nameChanges, grandChild.Name)
 	end)
 
 	child.Parent = root
@@ -1002,7 +1097,6 @@ function m.getEnvironmentReturnsCurrentEnvironment()
 	assertEqual(env.game:GetService("TeleportService"), game:GetService("TeleportService"))
 
 	local runService = game:GetService("RunService")
-	local teleportService = game:GetService("TeleportService")
 	local playersService = game:GetService("Players")
 
 	env:configure({
@@ -1011,15 +1105,13 @@ function m.getEnvironmentReturnsCurrentEnvironment()
 		isServer = true,
 		privateServerId = "after",
 		privateServerOwnerId = 88,
-		reservedServerAccessCode = "new-code",
 	})
 
 	assert(not runService:IsStudio())
 	assert(not runService:IsClient())
 	assert(runService:IsServer())
-	assertEqual(teleportService.PrivateServerId, "after")
-	assertEqual(teleportService.PrivateServerOwnerId, 88)
-	assertEqual(teleportService.ReservedServerAccessCode, "new-code")
+	assertEqual(env.game.PrivateServerId, "after")
+	assertEqual(env.game.PrivateServerOwnerId, 88)
 
 	local oldRunService = runService
 	local oldPlayersService = playersService
