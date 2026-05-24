@@ -29,31 +29,6 @@ local specialMounts = {
 	},
 }
 
-local function createInstance(name: string, className: string, parent)
-	local instance = fake.Instance.new(className)
-	instance.Name = name
-
-	if parent ~= nil then
-		instance.Parent = parent
-	end
-
-	return instance
-end
-
-local function createChild(parent, name: string, className: string?)
-	local child = parent._children[name]
-
-	if child ~= nil then
-		return child
-	end
-
-	child = createInstance(name, className or "Folder", parent)
-	child._childResolver = parent._childResolver
-	child._moduleTree = if parent._moduleTree ~= nil then parent._moduleTree.children[name] else nil
-
-	return child
-end
-
 local function startsWithPath(path: string, prefix: string): boolean
 	return path == prefix or path:sub(1, #prefix + 1) == prefix .. "/"
 end
@@ -113,40 +88,51 @@ local function moduleFilePathFromRequirePath(mounts, modulePath: string): string
 	return nil
 end
 
-function sandboxModule.create(manifestMounts)
+function sandboxModule.create(manifestMounts, runtimeConfig)
 	local fileModuleCache = {}
 	local mounts = {}
 	local mountByInstance = {}
+	local environment = fake.createEnvironment(runtimeConfig)
 	local sandboxGlobals = setmetatable({}, { __index = baseGlobals })
 	local installedGlobalsSnapshot = nil
-	local services = {}
+	local services = environment._services
+	local game = environment.game
 
-	sandboxGlobals._G = sandboxGlobals
+	local function createInstance(name: string, className: string, parent)
+		local instance = environment.Instance.new(className)
+		instance.Name = name
 
-	local game = createInstance("game", "DataModel", nil)
-
-	function game:GetService(serviceName: string)
-		local service = self._children[serviceName]
-
-		if service == nil then
-			error("Unknown service: " .. tostring(serviceName))
+		if parent ~= nil then
+			instance.Parent = parent
 		end
 
-		return service
+		return instance
+	end
+
+	local function createChild(parent, name: string, className: string?)
+		local child = parent:FindFirstChild(name)
+
+		if child == nil then
+			local existing = rawget(parent, name)
+
+			if type(existing) == "table" and existing._isFakeRobloxInstance then
+				child = existing
+			end
+		end
+
+		if child ~= nil then
+			return child
+		end
+
+		child = createInstance(name, className or "Folder", parent)
+		child._childResolver = parent._childResolver
+		child._moduleTree = if parent._moduleTree ~= nil then parent._moduleTree.children[name] else nil
+
+		return child
 	end
 
 	local function ensureService(serviceName: string)
-		local service = services[serviceName]
-
-		if service ~= nil then
-			return service
-		end
-
-		service = createInstance(serviceName, serviceName, game)
-
-		services[serviceName] = service
-
-		return service
+		return environment:getService(serviceName)
 	end
 
 	local function buildModuleTree(moduleRoot: string)
@@ -444,16 +430,17 @@ function sandboxModule.create(manifestMounts)
 	end
 
 	local function install()
+		for key, value in pairs(environment.globals) do
+			sandboxGlobals[key] = value
+		end
+
+		for key, value in pairs(fake) do
+			sandboxGlobals[key] = value
+		end
+
+		sandboxGlobals._G = sandboxGlobals
 		sandboxGlobals.game = game
 		sandboxGlobals.require = robloxRequire
-
-		for globalName, globalValue in pairs(fake) do
-			sandboxGlobals[globalName] = globalValue
-		end
-
-		for serviceName, service in pairs(services) do
-			sandboxGlobals[serviceName] = service
-		end
 
 		local keysToInstall = {
 			"_G",
@@ -463,12 +450,8 @@ function sandboxModule.create(manifestMounts)
 			"__currentFilePath",
 		}
 
-		for globalName in pairs(fake) do
+		for globalName in pairs(sandboxGlobals) do
 			table.insert(keysToInstall, globalName)
-		end
-
-		for serviceName in pairs(services) do
-			table.insert(keysToInstall, serviceName)
 		end
 
 		installedGlobalsSnapshot = {}
@@ -492,6 +475,7 @@ function sandboxModule.create(manifestMounts)
 	end
 
 	return {
+		environment = environment,
 		game = game,
 		services = services,
 		globals = sandboxGlobals,

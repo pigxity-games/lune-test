@@ -1,6 +1,8 @@
 # lune-test
 A test runner for the Lune runtime that simulates enough of the Roblox environment to run unit tests and sandboxed scripts with Roblox-style globals and requires.
 
+Detailed fake runtime documentation is under [RUNTIME.md](./RUNTIME.md).
+
 It supports:
 - Roblox instance-based requires
 - fake Roblox globals like `game`, `Instance`, `Vector3`, `Color3`, and more

@@ -1,5 +1,13 @@
+local Environment = require("./Environment")
+
 return {
+	createEnvironment = function(config)
+		return Environment.new(config)
+	end,
+	Environment = Environment,
 	Instance = require("./Instance"),
+	Signal = require("./Signal"),
+	Scheduler = require("./Scheduler"),
 	Color3 = require("./Color3"),
 	Vector2 = require("./Vector2"),
 	Vector3 = require("./Vector3"),

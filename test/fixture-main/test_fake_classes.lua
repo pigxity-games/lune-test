@@ -242,8 +242,11 @@ function m.instanceHierarchyAndLookup()
 end
 
 function m.instanceRenameWaitAndDestroy()
-	local folder = Instance.new("Folder")
-	local child = Instance.new("ModuleScript")
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+	local folder = env.Instance.new("Folder")
+	local child = env.Instance.new("ModuleScript")
 
 	folder.Name = "Container"
 	child.Name = "BeforeRename"
@@ -253,7 +256,22 @@ function m.instanceRenameWaitAndDestroy()
 	assert(folder:FindFirstChild("BeforeRename") == nil)
 	assertEqual(folder:FindFirstChild("AfterRename"), child)
 
-	local waited = folder:WaitForChild("AutoCreated")
+	local waited = nil
+	local created = nil
+
+	env.task.spawn(function()
+		waited = folder:WaitForChild("AutoCreated", 1)
+	end)
+
+	env.task.defer(function()
+		created = env.Instance.new("ModuleScript")
+		created.Name = "AutoCreated"
+		created.Parent = folder
+	end)
+
+	env.scheduler:flush()
+
+	assertEqual(waited, created)
 	assertEqual(waited.Name, "AutoCreated")
 	assertEqual(waited.Parent, folder)
 	assert(waited:IsA("ModuleScript"))

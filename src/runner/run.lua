@@ -40,7 +40,7 @@ end
 local function runSuite(output, testName: string, testData)
 	output.beginSuite(testName)
 
-	local discoverySandbox = sandbox.create(testData.mounts)
+	local discoverySandbox = sandbox.create(testData.mounts, testData.environment)
 	discoverySandbox.install()
 	discoverySandbox.globals.__currentFilePath = if testData.moduleIsFile then testData.module else nil
 	local caseNames = discoverCaseNames(discoverySandbox, testData)
@@ -48,7 +48,7 @@ local function runSuite(output, testName: string, testData)
 
 	for _, caseName in ipairs(caseNames) do
 		local deps = testData.cases[caseName]
-		local caseSandbox = sandbox.create(testData.mounts)
+		local caseSandbox = sandbox.create(testData.mounts, testData.environment)
 		caseSandbox.install()
 
 		local success, result = xpcall(function()
@@ -112,7 +112,7 @@ end
 local function runScriptSelection(output, selection)
 	output.beginSuite(selection.displayName)
 
-	local scriptSandbox = sandbox.create(selection.mounts)
+	local scriptSandbox = sandbox.create(selection.mounts, selection.environment)
 	scriptSandbox.install()
 
 	local success, result = xpcall(function()
