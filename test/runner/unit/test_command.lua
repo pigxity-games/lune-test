@@ -53,6 +53,17 @@ function m.runsMixedScriptsAndSuites()
 	assert(results.total == 11)
 end
 
+function m.runsManualSelectionsForDiscoveredSuitesByFilename()
+	local results = command.run({
+		"--manifest",
+		"test/manual-suite-selection/manifest.lua",
+		"config_unit,mine_unit",
+	})
+
+	assert(results.success)
+	assert(results.total == 2)
+end
+
 function m.suppressesReporterOutputForScriptOnlyRuns()
 	local scriptOnly = process.exec("lune", {
 		"run",

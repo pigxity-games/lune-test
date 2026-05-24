@@ -70,18 +70,42 @@ local function runSuite(output, testName: string, testData)
 	output.finishSuite()
 end
 
-local function runManifestSelection(output, manifest, requestedSuiteName: string?)
-	local matched = false
+local function resolveRequestedSuite(manifest, requestedSuiteName: string)
+	local exactMatch = manifest.tests[requestedSuiteName]
+
+	if exactMatch ~= nil then
+		return requestedSuiteName, exactMatch
+	end
+
+	local matchedSuiteName = nil
+	local matchedSuite = nil
 
 	for testName, testData in pairs(manifest.tests) do
-		if requestedSuiteName == nil or requestedSuiteName == testName then
-			matched = true
-			runSuite(output, testName, testData)
+		local basename = testName:match("([^/]+)$")
+
+		if basename == requestedSuiteName then
+			assert(matchedSuiteName == nil, `ambiguous test suite: {requestedSuiteName}`)
+			matchedSuiteName = testName
+			matchedSuite = testData
 		end
 	end
 
-	if requestedSuiteName ~= nil and not matched then
+	if matchedSuiteName == nil then
 		error(`unknown test suite: {requestedSuiteName}`, 0)
+	end
+
+	return matchedSuiteName, matchedSuite
+end
+
+local function runManifestSelection(output, manifest, requestedSuiteName: string?)
+	if requestedSuiteName ~= nil then
+		local matchedSuiteName, matchedSuite = resolveRequestedSuite(manifest, requestedSuiteName)
+		runSuite(output, matchedSuiteName, matchedSuite)
+		return
+	end
+
+	for testName, testData in pairs(manifest.tests) do
+		runSuite(output, testName, testData)
 	end
 end
 

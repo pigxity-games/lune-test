@@ -186,7 +186,7 @@ mounts = {
 ```
 
 ## Rojo workspaces
-Workspace definitions may use `rojoProject` instead of `mounts`:
+`rojoProject` can be used instead of `mounts`:
 
 ```lua
 workspaces = {
@@ -235,7 +235,7 @@ assert(SomeGameModule.add(8, 3) == 11)
 assert(SharedGameModule.average(10, 6) == 8)
 ```
 
-This is useful for ad hoc validation, fixture smoke tests, and small integration checks.
+This is useful for scripts which require Roblox API emulation.
 
 ## Testing this project
 The repository contains its own unit tests under `test/`.
