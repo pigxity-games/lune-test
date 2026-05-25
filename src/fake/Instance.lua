@@ -285,8 +285,8 @@ function InstanceMethods:WaitForChild(name: string, timeout: number?)
 	local runtime = rawget(self, "_runtime")
 	local scheduler = runtime and runtime.scheduler
 
-	if scheduler == nil then
-		error(`WaitForChild("{name}") requires a scheduler when the child is missing`, 2)
+	if scheduler == nil or not scheduler:canYieldCurrentThread() then
+		return nil
 	end
 
 	return scheduler:waitForSignal(

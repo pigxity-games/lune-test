@@ -1307,4 +1307,10 @@ function m.waitForChildToplevel()
 	assertEqual(waited3, parts)
 end
 
+function m.waitForChildToplevelMissingServiceChildReturnsNil()
+	local waited = ReplicatedStorage:WaitForChild("Items")
+
+	assertEqual(waited, nil)
+end
+
 return m

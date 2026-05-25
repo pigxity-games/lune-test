@@ -60,7 +60,7 @@ function m.runsMixedSuiteAndScriptSelections()
 	assert(results.total == expectedTotal)
 end
 
-function m.reportsTopLevelYieldDuringScriptLoad()
+function m.topLevelMissingChildReturnsNilDuringScriptLoad()
 	local results = runner.runSelections({
 		{
 			kind = "script",
@@ -70,12 +70,11 @@ function m.reportsTopLevelYieldDuringScriptLoad()
 		},
 	})
 
-	assert(not results.success)
+	assert(results.success)
 	assert(results.total == 1)
-	assert(results.errors:find("top%-level execution yielded while waiting for ReplicatedStorage.Generated", 1) ~= nil)
 end
 
-function m.reportsTopLevelYieldDuringCaseExecution()
+function m.topLevelMissingChildReturnsNilDuringCaseExecution()
 	local results = runner.runSelections({
 		{
 			kind = "suite",
@@ -94,9 +93,8 @@ function m.reportsTopLevelYieldDuringCaseExecution()
 		},
 	})
 
-	assert(not results.success)
+	assert(results.success)
 	assert(results.total == 1)
-	assert(results.errors:find("top%-level execution yielded while waiting for ReplicatedStorage.Generated", 1) ~= nil)
 end
 
 return m

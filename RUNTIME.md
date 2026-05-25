@@ -274,7 +274,8 @@ Parenting updates the child lists and named lookup tables immediately.
 - Returns immediately if the child already exists.
 - Uses the environment scheduler when the child does not yet exist.
 - Returns `nil` on timeout.
-- Errors if used on an instance that has no scheduler-backed runtime attached.
+- Returns `nil` if the instance has no scheduler-backed runtime attached.
+- Returns `nil` if the current execution context cannot yield, such as top-level sandbox execution.
 
 ## Built-In Class Properties
 

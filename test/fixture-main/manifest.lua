@@ -86,6 +86,7 @@ return {
 				servicesAreNotCreatableThroughInstanceNew = {},
 				dataModelPrivateServerIdentifiersMatchRobloxCases = {},
 				waitForChildToplevel = {},
+				waitForChildToplevelMissingServiceChildReturnsNil = {},
 			},
 		},
 	},

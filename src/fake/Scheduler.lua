@@ -106,6 +106,16 @@ function Scheduler:_assertManagedThread(thread, debugReason: string?)
 	error("top-level execution yielded", 3)
 end
 
+function Scheduler:canYieldCurrentThread(): boolean
+	local thread = coroutine.running()
+
+	if thread == nil then
+		return false
+	end
+
+	return self._managedThreads[thread] == true
+end
+
 function Scheduler:spawn(callback, ...)
 	local thread = coroutine.create(callback)
 	self._managedThreads[thread] = true
