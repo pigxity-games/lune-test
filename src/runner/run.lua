@@ -162,7 +162,15 @@ function runner.runSelections(selections)
 		end
 	end
 
-	output.printSummary()
+	local results = output.getResults()
+
+	if scriptOnly then
+		if not results.success then
+			output.printSummary(true)
+		end
+	else
+		output.printSummary()
+	end
 
 	return output.getResults()
 end

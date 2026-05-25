@@ -43,7 +43,15 @@ end
 
 function m.aliasRequires()
 	local SomeModule = require("@test/fixture-main/src/server/SomeModule")
+	local NestedModule = require("@test/game/unit/module")
 	assert(SomeModule.add(1, 1) == 2, "1+1 is not 2")
+	assert(NestedModule.add(2, 3) == 5, "@test alias did not resolve test/game/unit/module")
+end
+
+function m.luaurcAliasCanDifferFromDirectoryName()
+	local SpecNestedModule = require("@spec/game/unit/module")
+
+	assert(SpecNestedModule.add(3, 4) == 7, "@spec alias did not resolve despite differing from directory name")
 end
 
 function m.initLuaDirectoryRequires()
@@ -130,6 +138,10 @@ function m.invalidRequiresProduceErrors()
 	assertRequireError(function()
 		require("@alias/invalidPath")
 	end, 'Unable to resolve module path "@alias/invalidPath"')
+
+	assertRequireError(function()
+		require("@test/test_helperss")
+	end, 'Unable to resolve module path "@test/test_helperss"')
 end
 
 return m

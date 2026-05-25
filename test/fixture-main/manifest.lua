@@ -7,6 +7,7 @@ return {
 				playerScriptsClientRequires = {},
 				starterPlayerScriptsClientRequires = {},
 				aliasRequires = {},
+				luaurcAliasCanDifferFromDirectoryName = {},
 				initLuaDirectoryRequires = {},
 				requireStylesResolveToSameModuleAndShareState = {},
 				invalidRequiresProduceErrors = {},

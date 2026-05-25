@@ -1,4 +1,5 @@
 local fs = require("@lune/fs")
+local serde = require("@lune/serde")
 
 local Environment = require("../fake/Environment")
 local fake = require("../fake/index")
@@ -8,6 +9,8 @@ local sandboxModule = {}
 
 local baseGlobals = getfenv(0)
 local realRequire = require
+local cachedLuaurcAliases = nil
+local warnedFallbacks = {}
 
 local function traceback(err)
 	return debug.traceback(tostring(err), 2)
@@ -32,6 +35,61 @@ local specialMounts = {
 
 local function startsWithPath(path: string, prefix: string): boolean
 	return path == prefix or path:sub(1, #prefix + 1) == prefix .. "/"
+end
+
+local function warnFallback(key: string, message: string)
+	if warnedFallbacks[key] then
+		return
+	end
+
+	warnedFallbacks[key] = true
+	print("WARNING: " .. message)
+end
+
+local function getLuaurcAliases()
+	if cachedLuaurcAliases ~= nil then
+		return cachedLuaurcAliases
+	end
+
+	cachedLuaurcAliases = {}
+
+	local luaurcPath = paths.normalizeFilesystemPath(".luaurc")
+
+	if not fs.isFile(luaurcPath) then
+		return cachedLuaurcAliases
+	end
+
+	local ok, decoded = pcall(function()
+		return serde.decode("json", fs.readFile(luaurcPath))
+	end)
+
+	if not ok or type(decoded) ~= "table" or type(decoded.aliases) ~= "table" then
+		return cachedLuaurcAliases
+	end
+
+	for aliasName, aliasPath in pairs(decoded.aliases) do
+		if type(aliasName) == "string" and type(aliasPath) == "string" then
+			cachedLuaurcAliases[aliasName] = aliasPath
+		end
+	end
+
+	return cachedLuaurcAliases
+end
+
+local function resolveLuaurcAlias(aliasName: string, remainder: string): string?
+	local aliasPath = getLuaurcAliases()[aliasName]
+
+	if aliasPath == nil or aliasPath:sub(1, 1) == "~" then
+		return nil
+	end
+
+	local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(aliasPath, remainder))
+
+	if paths.resolveExistingSourceFile(candidatePath) ~= nil then
+		return candidatePath
+	end
+
+	return nil
 end
 
 local function resolveAliasedModuleToFilePath(mounts, modulePath: string): string?
@@ -68,9 +126,19 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 		return bestCandidate
 	end
 
+	local aliasedPath = resolveLuaurcAlias(aliasName, remainder)
+
+	if aliasedPath ~= nil then
+		return aliasedPath
+	end
+
 	local repoRelativePath = paths.normalizeFilesystemPath(paths.pathJoin(aliasName, remainder))
 
 	if paths.resolveExistingSourceFile(repoRelativePath) ~= nil then
+		warnFallback(
+			"repo:" .. modulePath,
+			`Falling back to repo-relative alias resolution for "{modulePath}" -> "{repoRelativePath}"`
+		)
 		return repoRelativePath
 	end
 
@@ -85,6 +153,10 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 				local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(normalizedRoot, trailingPath))
 
 				if paths.resolveExistingSourceFile(candidatePath) ~= nil then
+					warnFallback(
+						"mount:" .. modulePath,
+						`Falling back to mounted-root alias resolution for "{modulePath}" -> "{candidatePath}"`
+					)
 					return candidatePath
 				end
 			end

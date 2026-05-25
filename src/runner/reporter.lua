@@ -68,8 +68,8 @@ function reporter.create(options)
 		return state.matchedSuiteCount
 	end
 
-	function api.printSummary()
-		if not printSummary then
+	function api.printSummary(force: boolean?)
+		if not printSummary and not force then
 			return
 		end
 

@@ -12,3 +12,7 @@ local runOk, runErr = pcall(command.run, process.args)
 if not runOk then
 	fail(runErr)
 end
+
+if not runErr.success then
+	process.exit(1)
+end

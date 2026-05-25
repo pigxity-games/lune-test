@@ -125,4 +125,44 @@ function m.errorsWhenDashAHasNoScriptSelections()
 	assert(tostring(suiteOnlyError):find("%-a requires at least one script selection", 1) ~= nil)
 end
 
+function m.scriptOnlyFailuresPrintErrorsAndExitNonZero()
+	local result = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"test/runner/fixtures/invalid_require/typo_alias.lua",
+	})
+
+	assert(not result.ok)
+	assert(result.code == 1)
+	assert(result.stdout:find("Unable to resolve module path", 1, true) ~= nil)
+	assert(result.stdout:find("@test/test_helperss", 1, true) ~= nil)
+end
+
+function m.printsWarningsForFallbackAliasResolution()
+	local repoFallback = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"test/runner/fixtures/invalid_require/fallback_repo_alias.lua",
+	})
+	local mountFallback = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"test/fixture-main/scripts/fallback_mount_alias.lua",
+	})
+
+	assert(repoFallback.ok and repoFallback.code == 0)
+	assert(
+		repoFallback.stdout:find('WARNING: Falling back to repo%-relative alias resolution', 1) ~= nil,
+		repoFallback.stdout
+	)
+	assert(repoFallback.stdout:find('@fallback_repo/module', 1) ~= nil, repoFallback.stdout)
+
+	assert(mountFallback.ok and mountFallback.code == 0)
+	assert(
+		mountFallback.stdout:find('WARNING: Falling back to mounted%-root alias resolution', 1) ~= nil,
+		mountFallback.stdout
+	)
+	assert(mountFallback.stdout:find('@legacy/shared/StatefulModule', 1) ~= nil, mountFallback.stdout)
+end
+
 return m
