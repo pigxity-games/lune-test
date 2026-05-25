@@ -1,5 +1,9 @@
 local m = {}
 
+local function assertEqual(actual, expected, message)
+	assert(actual == expected, message or string.format("expected %s, got %s", tostring(expected), tostring(actual)))
+end
+
 local function assertContains(haystack: string, needle: string)
 	assert(haystack:find(needle, 1, true) ~= nil, string.format('expected "%s" to contain "%s"', haystack, needle))
 end
@@ -40,6 +44,42 @@ end
 function m.aliasRequires()
 	local SomeModule = require("@test/fixture-main/src/server/SomeModule")
 	assert(SomeModule.add(1, 1) == 2, "1+1 is not 2")
+end
+
+function m.initLuaDirectoryRequires()
+	local mountedUtilModule = require(ReplicatedStorage.UtilModule)
+	local fileUtilModule = require("./src/shared/UtilModule")
+	local outsideModule = require("./src/shared/OutsideModule")
+	local gameUtilModule = require("@game/ReplicatedStorage/UtilModule")
+	local gameSomeModule = require("@game/ServerScriptService/SomeModule")
+
+	assert(mountedUtilModule.add(2, 3) == 5, "mounted init.lua module did not load")
+	assert(fileUtilModule.add(4, 5) == 9, "filesystem init.lua module did not load")
+	assert(outsideModule.add(6, 7) == 13, "relative require into init.lua directory did not load")
+	assert(ReplicatedStorage.UtilModule.ChildModule ~= nil)
+	assert(gameUtilModule.add(2, 3) == 5)
+	assert(gameSomeModule.add(2, 3) == 5)
+end
+
+function m.requireStylesResolveToSameModuleAndShareState()
+	local requireStyles = require("./src/server/RequireStylesModule")
+	local byRelativeString = requireStyles.byRelativeString
+	local byAbsoluteString = requireStyles.byAbsoluteString
+	local byAbsoluteInstance = requireStyles.byAbsoluteInstance
+	local byRelativeInstance = requireStyles.byRelativeInstance
+	local byGameString = requireStyles.byGameString
+
+	assert(byRelativeString == byAbsoluteString)
+	assert(byRelativeString == byAbsoluteInstance)
+	assert(byRelativeString == byRelativeInstance)
+	assert(byRelativeString == byGameString)
+	assertEqual(byRelativeString.getCount(), 0)
+
+	assertEqual(byAbsoluteString.increment(), 1)
+	assertEqual(byRelativeString.getCount(), 1)
+	assertEqual(byAbsoluteInstance.getCount(), 1)
+	assertEqual(byRelativeInstance.getCount(), 1)
+	assertEqual(byGameString.getCount(), 1)
 end
 
 function m.invalidRequiresProduceErrors()

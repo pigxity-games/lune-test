@@ -41,6 +41,33 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 		return nil
 	end
 
+	if aliasName == "game" then
+		local virtualPath = paths.normalizeRequirePath(remainder)
+		local bestCandidate = nil
+		local bestMountLength = -1
+
+		for _, mount in ipairs(mounts) do
+			local mountPath = paths.normalizeRequirePath(mount.mountPath)
+
+			if startsWithPath(virtualPath, mountPath) then
+				local trailingPath = virtualPath:sub(#mountPath + 1)
+
+				if trailingPath:sub(1, 1) == "/" then
+					trailingPath = trailingPath:sub(2)
+				end
+
+				local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(mount.moduleRoot, trailingPath))
+
+				if paths.resolveExistingSourceFile(candidatePath) ~= nil and #mountPath > bestMountLength then
+					bestCandidate = candidatePath
+					bestMountLength = #mountPath
+				end
+			end
+		end
+
+		return bestCandidate
+	end
+
 	local repoRelativePath = paths.normalizeFilesystemPath(paths.pathJoin(aliasName, remainder))
 
 	if paths.resolveExistingSourceFile(repoRelativePath) ~= nil then
@@ -265,20 +292,26 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		for _, entryName in ipairs(fs.readDir(moduleRoot)) do
 			local entryPath = paths.normalizeFilesystemPath(paths.pathJoin(moduleRoot, entryName))
 			local moduleName = entryName:gsub("%.luau?$", "")
-			local childTree = tree.children[moduleName]
 
-			if childTree == nil then
-				childTree = {
-					children = {},
-				}
-				tree.children[moduleName] = childTree
-			end
+			if moduleName == "init" and fs.isFile(entryPath) then
+				tree.className = "ModuleScript"
+			else
+				local childTree = tree.children[moduleName]
 
-			if fs.isDir(entryPath) then
-				childTree.className = childTree.className or "Folder"
-				childTree.children = buildModuleTree(entryPath).children
-			elseif fs.isFile(entryPath) and entryName:match("%.luau?$") then
-				childTree.className = "ModuleScript"
+				if childTree == nil then
+					childTree = {
+						children = {},
+					}
+					tree.children[moduleName] = childTree
+				end
+
+				if fs.isDir(entryPath) then
+					local nestedTree = buildModuleTree(entryPath)
+					childTree.className = nestedTree.className or "Folder"
+					childTree.children = nestedTree.children
+				elseif fs.isFile(entryPath) and entryName:match("%.luau?$") then
+					childTree.className = "ModuleScript"
+				end
 			end
 		end
 
@@ -444,12 +477,23 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	end
 
 	local function resolveStringRequire(path: string): string
-		if path:sub(1, 1) == "." then
-			local currentScript = sandboxGlobals.script
+		if path:sub(1, 6) == "@self/" then
+			local requireBasePath = sandboxGlobals.__currentRequireBasePath
+			assert(requireBasePath ~= nil, "Self alias require used without a current module: " .. path)
+			return paths.normalizeFilesystemPath(paths.pathJoin(requireBasePath, path:sub(7)))
+		end
 
-			if currentScript ~= nil then
-				local currentPath = modulePathFromInstance(currentScript)
-				return paths.normalizeRequirePath(paths.dirname(currentPath) .. "/" .. path)
+		if path == "@self" then
+			local requireBasePath = sandboxGlobals.__currentRequireBasePath
+			assert(requireBasePath ~= nil, "Self alias require used without a current module: " .. path)
+			return paths.normalizeFilesystemPath(requireBasePath)
+		end
+
+		if path:sub(1, 1) == "." then
+			local requireBasePath = sandboxGlobals.__currentRequireBasePath
+
+			if requireBasePath ~= nil then
+				return paths.normalizeFilesystemPath(paths.pathJoin(requireBasePath, path))
 			end
 
 			local currentFilePath = sandboxGlobals.__currentFilePath
@@ -487,9 +531,12 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 
 		local oldScript = sandboxGlobals.script
 		local oldCurrentFilePath = sandboxGlobals.__currentFilePath
+		local oldCurrentRequireBasePath = sandboxGlobals.__currentRequireBasePath
+		local requireBasePath = paths.dirname(sourceFilePath)
 
 		sandboxGlobals.script = scriptInstance
 		sandboxGlobals.__currentFilePath = modulePath
+		sandboxGlobals.__currentRequireBasePath = requireBasePath
 
 		local packedArgs = table.pack(...)
 		local moduleOk, moduleResult = xpcall(function()
@@ -498,6 +545,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 
 		sandboxGlobals.script = oldScript
 		sandboxGlobals.__currentFilePath = oldCurrentFilePath
+		sandboxGlobals.__currentRequireBasePath = oldCurrentRequireBasePath
 
 		if not moduleOk then
 			error(moduleResult, 0)

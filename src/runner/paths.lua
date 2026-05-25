@@ -32,7 +32,20 @@ function paths.normalizeFilesystemPath(path: string): string
 		path = paths.pathJoin(process.cwd, path)
 	end
 
-	return path
+	if path:match("^%a:[/]") ~= nil then
+		local drivePrefix = path:sub(1, 2)
+		local remainder = path:sub(4)
+		local normalizedRemainder = paths.joinParts(paths.splitPath(remainder))
+
+		return if normalizedRemainder == "" then drivePrefix .. "/" else drivePrefix .. "/" .. normalizedRemainder
+	end
+
+	if path:sub(1, 1) == "/" then
+		local normalizedRemainder = paths.joinParts(paths.splitPath(path))
+		return if normalizedRemainder == "" then "/" else "/" .. normalizedRemainder
+	end
+
+	return paths.joinParts(paths.splitPath(path))
 end
 
 function paths.resolvePathFromFile(baseFilePath: string, targetPath: string): string
@@ -105,6 +118,14 @@ function paths.resolveExistingSourceFile(path: string): string?
 
 	if fs.isFile(normalizedPath .. ".luau") then
 		return normalizedPath .. ".luau"
+	end
+
+	if fs.isFile(paths.pathJoin(normalizedPath, "init.lua")) then
+		return paths.pathJoin(normalizedPath, "init.lua")
+	end
+
+	if fs.isFile(paths.pathJoin(normalizedPath, "init.luau")) then
+		return paths.pathJoin(normalizedPath, "init.luau")
 	end
 
 	return nil

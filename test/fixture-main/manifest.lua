@@ -7,6 +7,8 @@ return {
 				playerScriptsClientRequires = {},
 				starterPlayerScriptsClientRequires = {},
 				aliasRequires = {},
+				initLuaDirectoryRequires = {},
+				requireStylesResolveToSameModuleAndShareState = {},
 				invalidRequiresProduceErrors = {},
 			},
 		},
