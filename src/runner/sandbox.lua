@@ -228,7 +228,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	end
 
 	local function createChild(parent, name: string, className: string?)
-		local child = parent:FindFirstChild(name)
+		local child = rawget(parent, "_childrenByName")[name]
 
 		if child == nil then
 			local existing = rawget(parent, name)

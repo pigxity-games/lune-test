@@ -29,6 +29,7 @@ function Scheduler.new(config)
 		_now = 0,
 		_queue = {},
 		_order = 0,
+		_managedThreads = {},
 		_runtime = config.runtime,
 		_errors = {},
 	}, Scheduler)
@@ -61,6 +62,7 @@ function Scheduler:_resumeThread(thread, args)
 	end
 
 	if coroutine.status(thread) == "dead" then
+		self._managedThreads[thread] = nil
 		return
 	end
 
@@ -90,8 +92,23 @@ function Scheduler:_runItem(item)
 	item.payload(unpackArgs(item.args))
 end
 
+function Scheduler:_assertManagedThread(thread, debugReason: string?)
+	assert(thread ~= nil, "scheduler waits require a running coroutine")
+
+	if self._managedThreads[thread] then
+		return
+	end
+
+	if debugReason ~= nil then
+		error(`top-level execution yielded while {debugReason}`, 3)
+	end
+
+	error("top-level execution yielded", 3)
+end
+
 function Scheduler:spawn(callback, ...)
 	local thread = coroutine.create(callback)
+	self._managedThreads[thread] = true
 	self:_enqueue(self._now, "thread", thread, packArgs(...))
 	return thread
 end
@@ -112,16 +129,18 @@ end
 
 function Scheduler:wait(seconds: number?)
 	local duration = math.max(seconds or 0, 0)
+	self:_assertManagedThread(coroutine.running(), `waiting for {duration} seconds`)
 	return coroutine.yield(duration)
 end
 
-function Scheduler:waitForSignal(signal, predicate, timeout: number?)
+function Scheduler:waitForSignal(signal, predicate, timeout: number?, debugReason: string?)
 	local thread = coroutine.running()
 	local token = {
 		_schedulerToken = true,
+		debugReason = debugReason,
 	}
 
-	assert(thread ~= nil, "signal waits require a running coroutine")
+	self:_assertManagedThread(thread, debugReason)
 
 	local connection
 	local timeoutHandle

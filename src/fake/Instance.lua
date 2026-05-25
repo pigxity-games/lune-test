@@ -22,6 +22,36 @@ local function joinNames(names)
 	return table.concat(names, ", ")
 end
 
+local function resolveChildByName(self, name: string, allowMountResolution: boolean)
+	local child = rawget(self, "_childrenByName")[name]
+
+	if child ~= nil or not allowMountResolution then
+		return child
+	end
+
+	local childResolver = rawget(self, "_childResolver")
+
+	if childResolver ~= nil then
+		return childResolver(self, name)
+	end
+
+	return nil
+end
+
+local function formatChildWaitPath(self, name: string): string
+	local fullName = self:GetFullName()
+
+	if fullName == "game" then
+		return name
+	end
+
+	if fullName:sub(1, 5) == "game." then
+		fullName = fullName:sub(6)
+	end
+
+	return fullName .. "." .. name
+end
+
 local function updateNamedChildLookup(parent, childName: string)
 	for _, child in ipairs(parent._children) do
 		if child.Name == childName then
@@ -214,7 +244,7 @@ function InstanceMethods:GetFullName()
 end
 
 function InstanceMethods:FindFirstChild(name: string)
-	return self._childrenByName[name]
+	return resolveChildByName(self, name, true)
 end
 
 function InstanceMethods:FindFirstChildOfClass(className: string)
@@ -246,7 +276,7 @@ function InstanceMethods:FindFirstChildWhichIsA(className: string, recursive: bo
 end
 
 function InstanceMethods:WaitForChild(name: string, timeout: number?)
-	local child = self:FindFirstChild(name)
+	local child = resolveChildByName(self, name, true)
 
 	if child ~= nil then
 		return child
@@ -259,9 +289,14 @@ function InstanceMethods:WaitForChild(name: string, timeout: number?)
 		error(`WaitForChild("{name}") requires a scheduler when the child is missing`, 2)
 	end
 
-	return scheduler:waitForSignal(getSignal(self, "ChildAdded"), function(candidate)
-		return candidate.Name == name
-	end, timeout)
+	return scheduler:waitForSignal(
+		getSignal(self, "ChildAdded"),
+		function(candidate)
+			return candidate.Name == name
+		end,
+		timeout,
+		`waiting for {formatChildWaitPath(self, name)}`
+	)
 end
 
 function InstanceMethods:GetChildren()
@@ -454,17 +489,7 @@ function InstanceMetatable.__index(self, key)
 	end
 
 	if type(key) == "string" then
-		local child = rawget(self, "_childrenByName")[key]
-
-		if child ~= nil then
-			return child
-		end
-
-		local childResolver = rawget(self, "_childResolver")
-
-		if childResolver ~= nil then
-			return childResolver(self, key)
-		end
+		return resolveChildByName(self, key, true)
 	end
 
 	return nil

@@ -4,6 +4,9 @@ local paths = require("@src/runner/paths")
 
 local m = {}
 
+local fixtureMainManifest = manifestRunner.loadManifest("test/fixture-main/manifest.lua")
+local fixtureMainMounts = manifestRunner.getMountsForWorkspace(fixtureMainManifest, nil)
+
 local function countSuiteCases(manifest, suiteName)
 	local suite = manifest.tests[suiteName]
 	assert(suite ~= nil, `missing suite: {suiteName}`)
@@ -18,20 +21,18 @@ local function countSuiteCases(manifest, suiteName)
 end
 
 function m.runsScriptSelectionsInSeparateSandboxes()
-	local manifest = manifestRunner.loadManifest("test/fixture-main/manifest.lua")
-	local mounts = manifestRunner.getMountsForWorkspace(manifest, nil)
 	local results = runner.runSelections({
 		{
 			kind = "script",
 			filePath = paths.sourceFilePathWithoutExtension("test/fixture-main/scripts/stateful_first.lua"),
 			displayName = "stateful_first",
-			mounts = mounts,
+			mounts = fixtureMainMounts,
 		},
 		{
 			kind = "script",
 			filePath = paths.sourceFilePathWithoutExtension("test/fixture-main/scripts/stateful_second.lua"),
 			displayName = "stateful_second",
-			mounts = mounts,
+			mounts = fixtureMainMounts,
 		},
 	})
 
@@ -40,25 +41,62 @@ function m.runsScriptSelectionsInSeparateSandboxes()
 end
 
 function m.runsMixedSuiteAndScriptSelections()
-	local manifest = manifestRunner.loadManifest("test/fixture-main/manifest.lua")
-	local mounts = manifestRunner.getMountsForWorkspace(manifest, nil)
-	local expectedTotal = countSuiteCases(manifest, "test_module_requires") + 1
+	local expectedTotal = countSuiteCases(fixtureMainManifest, "test_module_requires") + 1
 	local results = runner.runSelections({
 		{
 			kind = "suite",
-			manifest = manifest,
+			manifest = fixtureMainManifest,
 			suiteName = "test_module_requires",
 		},
 		{
 			kind = "script",
 			filePath = paths.sourceFilePathWithoutExtension("test/fixture-main/scripts/uses_modules.lua"),
 			displayName = "uses_modules",
-			mounts = mounts,
+			mounts = fixtureMainMounts,
 		},
 	})
 
 	assert(results.success)
 	assert(results.total == expectedTotal)
+end
+
+function m.reportsTopLevelYieldDuringScriptLoad()
+	local results = runner.runSelections({
+		{
+			kind = "script",
+			filePath = paths.sourceFilePathWithoutExtension("test/runner/fixtures/top_level_yield/yielding_script.lua"),
+			displayName = "yielding_script",
+			mounts = fixtureMainMounts,
+		},
+	})
+
+	assert(not results.success)
+	assert(results.total == 1)
+	assert(results.errors:find("top%-level execution yielded while waiting for ReplicatedStorage.Generated", 1) ~= nil)
+end
+
+function m.reportsTopLevelYieldDuringCaseExecution()
+	local results = runner.runSelections({
+		{
+			kind = "suite",
+			manifest = {
+				tests = {
+					yielding_case_suite = {
+						module = "test/runner/fixtures/top_level_yield/yielding_case",
+						cases = {
+							waitsForMissingGenerated = {},
+						},
+						mounts = fixtureMainMounts,
+					},
+				},
+			},
+			suiteName = "yielding_case_suite",
+		},
+	})
+
+	assert(not results.success)
+	assert(results.total == 1)
+	assert(results.errors:find("top%-level execution yielded while waiting for ReplicatedStorage.Generated", 1) ~= nil)
 end
 
 return m

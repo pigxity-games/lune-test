@@ -85,6 +85,7 @@ return {
 				getEnvironmentReturnsCurrentEnvironment = {},
 				servicesAreNotCreatableThroughInstanceNew = {},
 				dataModelPrivateServerIdentifiersMatchRobloxCases = {},
+				waitForChildToplevel = {},
 			},
 		},
 	},

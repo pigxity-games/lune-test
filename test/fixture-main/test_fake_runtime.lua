@@ -1094,11 +1094,8 @@ function m.waitForChildImmediateTimeoutAndNoSchedulerErrors()
 	assert(waited == nil)
 
 	local standalone = Instance.new("Folder")
-	local ok, err = pcall(function()
-		standalone:WaitForChild("Missing")
-	end)
-	assert(not ok)
-	assertContains(err, "requires a scheduler")
+	local waited2 = standalone:WaitForChild("Missing")
+	assertEqual(waited2, nil)
 end
 
 local function setupMultiEnvTest()
@@ -1289,6 +1286,25 @@ function m.dataModelPrivateServerIdentifiersMatchRobloxCases()
 
 	assert(privateServer.game.PrivateServerId ~= "")
 	assertEqual(privateServer.game.PrivateServerOwnerId, 12345)
+end
+
+function m.waitForChildToplevel()
+	local items = Instance.new("Folder", ReplicatedStorage)
+	items.Name = "Items"
+
+	local waited = ReplicatedStorage:WaitForChild("Items")
+	assertEqual(waited, items)
+
+	local waited2 = items:WaitForChild("Parts")
+	assertEqual(waited2, nil)
+
+	local parts = Instance.new("Folder", items)
+	parts.Name = "Parts"
+
+	assertEqual(waited2, nil)
+
+	local waited3 = items:WaitForChild("Parts")
+	assertEqual(waited3, parts)
 end
 
 return m
