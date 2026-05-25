@@ -283,6 +283,23 @@ function m.collectionServiceTracksTagsAndCleanup()
 	assert(collectionService:HasTag(first, "Enemy"))
 	assertSequenceEqual(added, { "First", "Second" }, "added tags")
 
+	first:AddTag("Direct")
+	assert(first:HasTag("Direct"))
+	assert(collectionService:HasTag(first, "Direct"))
+	assertNameSetEqual(collectionService:GetTagged("Direct"), { "First" }, "direct instance tags")
+
+	local directTags = {}
+	for _, tag in ipairs(first:GetTags()) do
+		directTags[tag] = true
+	end
+
+	assert(directTags.Enemy)
+	assert(directTags.Direct)
+
+	first:RemoveTag("Direct")
+	assert(not first:HasTag("Direct"))
+	assertEqual(#collectionService:GetTagged("Direct"), 0)
+
 	collectionService:RemoveTag(first, "Enemy")
 	assert(not collectionService:HasTag(first, "Enemy"))
 	assertSequenceEqual(removed, { "First" }, "removed tags")
@@ -348,6 +365,10 @@ function m.remoteEventRoutesAcrossServerAndClients()
 
 	remote.Name = "PingEvent"
 
+	remote.Parent = env.globals.ReplicatedStorage
+	assertEqual(env.game:GetService("ReplicatedStorage"):FindFirstChild("PingEvent"), remote)
+	assertEqual(secondClient.game:GetService("ReplicatedStorage"):FindFirstChild("PingEvent"), remote)
+
 	remote.OnServerEvent:Connect(function(player, message)
 		table.insert(serverEvents, `{player.Name}:{message}`)
 	end)
@@ -377,6 +398,31 @@ function m.remoteEventRoutesAcrossServerAndClients()
 	remote:FireServer("multi", 2, true)
 
 	assertSequenceEqual(tupleArgs, { "Primary", "multi", 2, true }, "server remote tuple args")
+
+	local edgeRemote = env.Instance.new("RemoteEvent")
+	edgeRemote.Name = "EdgeEvent"
+	edgeRemote.Parent = env.globals.ReplicatedStorage
+
+	local secondEdgeRemote = secondClient:bindRemote(edgeRemote)
+	local serverSawFunctionArg = "unset"
+	local clientSawHiddenInstance = "unset"
+
+	edgeRemote.OnServerEvent:Connect(function(_, functionArg)
+		serverSawFunctionArg = functionArg
+	end)
+
+	secondEdgeRemote.OnClientEvent:Connect(function(instanceArg)
+		clientSawHiddenInstance = instanceArg
+	end)
+
+	secondEdgeRemote:FireServer(function() end)
+	assertEqual(serverSawFunctionArg, nil)
+
+	local serverOnlyFolder = env.Instance.new("Folder")
+	serverOnlyFolder.Name = "ServerOnlyFolder"
+
+	edgeRemote:FireClient(secondClient.LocalPlayer, serverOnlyFolder)
+	assertEqual(clientSawHiddenInstance, nil)
 end
 
 function m.remoteFunctionSupportsInvokeServerAndClient()
@@ -739,6 +785,7 @@ function m.memoryStoreTeleportDiagnosticsAndResetWork()
 	teleportOptions:SetTeleportData({
 		round = 2,
 	})
+	assertEqual(teleportOptions:GetTeleportData().round, 2)
 
 	teleportService:TeleportAsync(1234, { env.globals.Players.LocalPlayer }, teleportOptions)
 
@@ -795,6 +842,33 @@ function m.memoryStoreAdditionalMapAndQueueBranches()
 	map:RemoveAsync("b")
 	assert(map:GetAsync("b") == nil)
 
+	map:SetAsync("ranked-a", "A", 60, 10)
+	map:SetAsync("ranked-b", "B", 60, 1)
+
+	local rankedValue, rankedSortKey = map:GetAsync("ranked-a")
+	assertEqual(rankedValue, "A")
+	assertEqual(rankedSortKey, 10)
+
+	local updatedValue, updatedSortKey = map:UpdateAsync("ranked-a", function(oldValue, oldSortKey)
+		assertEqual(oldValue, "A")
+		assertEqual(oldSortKey, 10)
+		return "A2", 20
+	end, 60)
+
+	assertEqual(updatedValue, "A2")
+	assertEqual(updatedSortKey, 20)
+
+	local rankedRange = map:GetRangeAsync(Enum.SortDirection.Ascending, 2)
+	assertEqual(rankedRange[1].key, "ranked-b")
+	assertEqual(rankedRange[1].value, "B")
+	assertEqual(rankedRange[1].sortKey, 1)
+	assertEqual(rankedRange[2].key, "ranked-a")
+	assertEqual(rankedRange[2].value, "A2")
+	assertEqual(rankedRange[2].sortKey, 20)
+
+	map:RemoveAsync("ranked-a")
+	map:RemoveAsync("ranked-b")
+
 	queue:AddAsync("first", 60)
 	queue:AddAsync("second", 60)
 	queue:AddAsync("third", 60)
@@ -824,6 +898,29 @@ function m.memoryStoreAdditionalMapAndQueueBranches()
 	assertSequenceEqual(priorityValues, { "high", "low" }, "priority queue order")
 	assertEqual(type(priorityId), "string")
 	priorityQueue:RemoveAsync(priorityId)
+
+	local visibilityQueue = memoryStoreService:GetQueue("VisibilityTimeoutQueue", 2)
+
+	visibilityQueue:AddAsync("visible-again", 60)
+
+	local invisibleValues, invisibleId = visibilityQueue:ReadAsync(1, false, 0)
+	assertSequenceEqual(invisibleValues, { "visible-again" }, "visibility timeout read")
+	assertEqual(type(invisibleId), "string")
+	assertEqual(visibilityQueue:GetSizeAsync(false), 1)
+	assertEqual(visibilityQueue:GetSizeAsync(true), 0)
+
+	env.scheduler:advance(2)
+
+	assertEqual(visibilityQueue:GetSizeAsync(true), 1)
+
+	visibilityQueue:RemoveAsync(invisibleId)
+	assertEqual(visibilityQueue:GetSizeAsync(true), 1)
+
+	local visibleAgainValues, visibleAgainId = visibilityQueue:ReadAsync(1, false, 0)
+	assertSequenceEqual(visibleAgainValues, { "visible-again" }, "visibility timeout reread")
+	assertEqual(type(visibleAgainId), "string")
+	visibilityQueue:RemoveAsync(visibleAgainId)
+	assertEqual(visibilityQueue:GetSizeAsync(), 0)
 
 	local allOrNothingQueue = memoryStoreService:GetQueue("AllOrNothingQueue")
 
@@ -1131,6 +1228,67 @@ function m.getEnvironmentReturnsCurrentEnvironment()
 	assertError(function()
 		env:uninstall()
 	end, "Cannot uninstall the base environment")
+end
+
+function m.servicesAreNotCreatableThroughInstanceNew()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+
+	local function assertServiceNotCreatable(className)
+		local ok, err = pcall(function()
+			env.Instance.new(className)
+		end)
+
+		assert(not ok)
+		assert(
+			err:find("not creatable") ~= nil or err:find("cannot be created") ~= nil or err:find("Enabled types") ~= nil,
+			string.format("%s should not be creatable; got %s", className, tostring(err))
+		)
+	end
+
+	assertServiceNotCreatable("CollectionService")
+	assertServiceNotCreatable("TeleportService")
+	assertServiceNotCreatable("MemoryStoreService")
+	assertServiceNotCreatable("RunService")
+	assertServiceNotCreatable("DataModel")
+	assertServiceNotCreatable("ReplicatedStorage")
+	assertServiceNotCreatable("ServerScriptService")
+	assertServiceNotCreatable("StarterPlayer")
+	assertServiceNotCreatable("StarterPlayerScripts")
+	assertServiceNotCreatable("PlayerScripts")
+
+	assertEqual(env.game:GetService("CollectionService").ClassName, "CollectionService")
+	assertEqual(env.game:GetService("TeleportService").ClassName, "TeleportService")
+	assertEqual(env.game:GetService("MemoryStoreService").ClassName, "MemoryStoreService")
+	assertEqual(env.game:GetService("RunService").ClassName, "RunService")
+end
+
+function m.dataModelPrivateServerIdentifiersMatchRobloxCases()
+	local standard = createEnvironment({
+		activePlayers = {},
+	})
+
+	assertEqual(standard.game.PrivateServerId, "")
+	assertEqual(standard.game.PrivateServerOwnerId, 0)
+
+	local reserved = createEnvironment({
+		privateServerId = "reserved-server-id",
+		privateServerOwnerId = 0,
+		activePlayers = {},
+	})
+
+	assert(reserved.game.PrivateServerId ~= "")
+	assertEqual(reserved.game.PrivateServerOwnerId, 0)
+
+	local privateServer = createEnvironment({
+		privateServerId = "private-server-id",
+		privateServerOwnerId = 12345,
+		activePlayers = {},
+	})
+
+	assert(privateServer.game.PrivateServerId ~= "")
+	assertEqual(privateServer.game.PrivateServerOwnerId, 12345)
 end
 
 return m

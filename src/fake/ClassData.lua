@@ -1,5 +1,18 @@
 local ClassData = {}
 
+local nonCreatableClasses = {
+	CollectionService = true,
+	TeleportService = true,
+	MemoryStoreService = true,
+	RunService = true,
+	DataModel = true,
+	ReplicatedStorage = true,
+	ServerScriptService = true,
+	StarterPlayer = true,
+	StarterPlayerScripts = true,
+	PlayerScripts = true,
+}
+
 local parentByClass = {
 	Instance = nil,
 	DataModel = "Instance",
@@ -84,6 +97,10 @@ end
 
 function ClassData.isSupported(className: string): boolean
 	return parentByClass[className] ~= nil or className == "Instance"
+end
+
+function ClassData.isCreatable(className: string): boolean
+	return not nonCreatableClasses[className]
 end
 
 function ClassData.isA(className: string, targetClassName: string): boolean

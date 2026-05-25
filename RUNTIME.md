@@ -12,6 +12,7 @@ The runtime can be used in two ways:
 The fake module exports:
 
 - `createEnvironment(config)`
+- `getEnvironment()`
 - `Environment`
 - `Instance`
 - `Signal`
@@ -24,6 +25,8 @@ The fake module exports:
 - `UDim2`
 - `BrickColor`
 - `Random`
+
+Sandbox globals also expose those fake-module exports plus `Enum.SortDirection`.
 
 ## Creating An Environment
 
@@ -46,7 +49,17 @@ The returned environment includes:
 - `env.task`
 - `env.scheduler`
 
+Installed sandbox environments also support:
+
+- `env:configure(config)`
+- `env:reset(config?)`
+- `env:overrideService(serviceName, override)`
+- `env:install()`
+- `env:uninstall()`
+
 The environment is stateful. If you want fresh state between tests, create a new environment or call `env:reset(...)`.
+
+Within the test runner, each case and each script selection gets a fresh sandbox and a fresh fake runtime instance.
 
 ## Configuration
 
@@ -86,6 +99,8 @@ If you omit `availableServices`, the runtime enables the built-in default servic
 If you omit `availableInstanceTypes`, the runtime enables every currently supported fake class from `src/fake/ClassData.lua`.
 
 If you omit `activePlayers` and `isClient` is `true`, the runtime creates a default local player.
+
+If you provide `activePlayers` with `isClient = true` and do not mark any player with `localPlayer = true`, the first created player becomes `Players.LocalPlayer`.
 
 ### Restricting Services Or Types
 
@@ -160,8 +175,24 @@ The fake runtime currently supports these classes:
 - `PlayerScripts`
 - `ModuleScript`
 - `LocalScript`
+- `TeleportOptions`
 
 This is not a complete Roblox class set. Only the classes listed above are implemented.
+
+These supported service classes are intentionally not creatable through public `Instance.new(...)`:
+
+- `DataModel`
+- `RunService`
+- `CollectionService`
+- `MemoryStoreService`
+- `TeleportService`
+- `ReplicatedStorage`
+- `ServerScriptService`
+- `StarterPlayer`
+- `StarterPlayerScripts`
+- `PlayerScripts`
+
+Use `game:GetService(...)` to access those services. `StarterPlayerScripts` and `PlayerScripts` are created internally when the runtime mounts client code or player containers.
 
 ## Core Instance Behavior
 
@@ -173,12 +204,24 @@ Instances support:
 - `GetFullName()`
 - `FindFirstChild(name)`
 - `FindFirstChildOfClass(className)`
+- `FindFirstChildWhichIsA(className, recursive?)`
 - `WaitForChild(name, timeout?)`
 - `GetChildren()`
 - `GetDescendants()`
 - `IsA(className)`
 - `Destroy()`
 - `ClearAllChildren()`
+
+`game` additionally supports:
+
+- `GetService(serviceName)`
+- `FindService(serviceName)`
+
+The fake `DataModel` also exposes:
+
+- `PrivateServerId`
+- `PrivateServerOwnerId`
+- `ReservedServerAccessCode`
 
 Supported built-in signals on every instance:
 
@@ -198,6 +241,23 @@ Supported attribute helpers:
 
 - `SetAttribute(name, value)`
 - `GetAttribute(name)`
+
+Supported tag helpers on runtime-backed instances:
+
+- `AddTag(tag)`
+- `RemoveTag(tag)`
+- `HasTag(tag)`
+- `GetTags()`
+
+Signal payloads currently follow the fake implementation rather than the full Roblox API:
+
+- `Changed` fires the property name for most classes.
+- `NumberValue.Changed` fires the new numeric value.
+- `ChildAdded` and `ChildRemoved` fire the child instance.
+- `AncestryChanged` fires `self, newParent`.
+- `AttributeChanged` fires the attribute name.
+- `GetAttributeChangedSignal(name)` currently fires the new attribute value.
+- `GetPropertyChangedSignal(name)` currently fires the new property value.
 
 ### Parenting Rules
 
@@ -247,6 +307,7 @@ The fake runtime includes a small set of class defaults:
 - `Transparency`
 
 Updating `Position` also updates `CFrame`. Updating `CFrame` also updates `Position`.
+Fresh parts start at `Position = Vector3.zero` and `CFrame = CFrame.new(Vector3.zero)`.
 
 This runtime does not provide full physics simulation.
 
@@ -300,9 +361,9 @@ The scheduler is deterministic and manual:
 
 `RunService` integrates with scheduler stepping:
 
-- `Heartbeat` fires on `advance(delta)`
-- `Stepped` fires on `advance(delta)`
-- `RenderStepped` fires on `advance(delta)`
+- `Heartbeat(deltaTime)` fires on `advance(delta)`
+- `Stepped(currentTime, deltaTime)` fires on `advance(delta)`
+- `RenderStepped(deltaTime)` fires on `advance(delta)`
 
 ## Services
 
@@ -333,7 +394,10 @@ Current behavior:
 - Duplicate tags are suppressed.
 - Tag order is stable in insertion order.
 - Destroying a tagged instance removes it from tag state and fires removed signals.
-- Reparenting does not remove tags by itself.
+- Tags remain attached to the instance even if it leaves the DataModel.
+- `GetTagged(tag)` only returns tagged instances currently inside the DataModel.
+- Reparenting into or out of the DataModel fires the added or removed tag signals as membership changes.
+- Runtime-backed instances can call the same tag operations directly through `instance:AddTag(...)`, `instance:RemoveTag(...)`, `instance:HasTag(...)`, and `instance:GetTags()`.
 
 ### `Players`
 
@@ -362,6 +426,13 @@ Environment helpers:
 - `env:replaceCharacter(player, characterConfig?)`
 - `env:getPlayers()`
 
+Current behavior:
+
+- `env:addPlayer({ localPlayer = true })` also assigns that player to `Players.LocalPlayer`.
+- Every added player gets a `Backpack` and `PlayerScripts` container.
+- `env:removePlayer(player)` fires `PlayerRemoving`, destroys the player's current character if present, and clears `LocalPlayer` if that player was local.
+- `env:replaceCharacter(player, characterConfig?)` parents the new character into `Workspace`.
+
 ### `Workspace`
 
 `Workspace` is available as both:
@@ -383,22 +454,31 @@ Supported primitives:
 Sorted map operations:
 
 - `GetAsync(key)`
-- `SetAsync(key, value, expirationSeconds?)`
+- `SetAsync(key, value, expirationSeconds?, sortKey?)`
 - `UpdateAsync(key, transform, expirationSeconds?)`
 - `RemoveAsync(key)`
+- `GetRangeAsync(sortDirection, count?)`
 - `ListItemsAsync()`
 
 Queue operations:
 
-- `AddAsync(value)`
-- `ReadAsync(count?)`
-- `GetSizeAsync()`
+- `AddAsync(value, expirationSeconds?, priority?)`
+- `ReadAsync(count?, allOrNothing?, waitTimeout?)`
+- `RemoveAsync(reservationId)`
+- `GetSizeAsync(excludeInvisible?)`
 
 Current behavior:
 
 - Expiry is based on fake scheduler time.
-- Queue reads are destructive FIFO reads.
-- `UpdateAsync` can remove a key by returning `nil`.
+- `GetAsync` returns `value, sortKey` when a value exists.
+- `UpdateAsync` receives `oldValue, oldSortKey` and may return `newValue, newSortKey`.
+- `GetRangeAsync` sorts by `sortKey` when present and falls back to key ordering for ties or missing sort keys.
+- Queue reads reserve items and return `values, reservationId`.
+- Queue priority is higher-first, then FIFO for equal priority.
+- `GetQueue(name, invisibilityTimeoutSeconds?)` supports visibility timeouts for reserved items.
+- Invisible reserved items are excluded from `GetSizeAsync(true)` and become visible again when the reservation expires.
+- `RemoveAsync(reservationId)` only removes items that are still reserved under that reservation id.
+- `UpdateAsync` can cancel a write by returning `nil`, leaving the existing stored value unchanged.
 
 ### `TeleportService`
 
@@ -408,10 +488,18 @@ Supported surface:
 - `PrivateServerOwnerId`
 - `ReservedServerAccessCode`
 - `TeleportAsync(placeId, players, options?)`
+- `ReserveServerAsync(placeId)`
 - `ReserveServer(placeId)`
 - `GetLocalPlayerTeleportData()`
 
 `TeleportAsync` stores per-player teleport data when `options.TeleportData` is supplied.
+`ReserveServerAsync` also updates `game.ReservedServerAccessCode` and `TeleportService.ReservedServerAccessCode` in the active environment.
+
+`TeleportOptions` currently supports:
+
+- `ReservedServerAccessCode`
+- `SetTeleportData(data)`
+- `GetTeleportData()`
 
 ### Other Default Services
 
@@ -439,6 +527,9 @@ Current behavior:
 - `FireClient` requires an explicit player.
 - `FireAllClients` iterates over the current player list.
 - Remote traffic is logged for diagnostics.
+- Function and thread arguments are sanitized to `nil`.
+- Fake instances outside the DataModel are sanitized to `nil` when sent through remotes.
+- Remote logs from `env:inspectRemoteTraffic()` include `FireServer`, `FireClient`, `InvokeServer`, `InvokeClient`, and `TeleportAsync` entries.
 
 ### `RemoteFunction`
 
@@ -454,6 +545,7 @@ Current behavior:
 - Server inbound invocation injects the calling player as the first server argument.
 - Client invoke handlers can be registered per spawned client.
 - Missing invoke handlers produce explicit errors.
+- Invocation arguments use the same sanitizing rules as `RemoteEvent`.
 
 ## Client/Server Pairing
 
@@ -475,6 +567,7 @@ Behavior:
 - Clients share the same replicated object tree.
 - Each client gets its own `Players.LocalPlayer`.
 - Client remote bindings allow per-player `FireServer`, `InvokeServer`, `OnClientEvent`, and `OnClientInvoke`.
+- `client.game:GetService("Players")` returns a proxy with that client's own `LocalPlayer`, while other services are shared fake service instances.
 
 ## Diagnostics
 
@@ -487,15 +580,28 @@ Environment diagnostics:
 
 These are intended for debugging fake-runtime behavior in tests.
 
+- `inspectTree(root?)` returns a formatted string tree.
+- `inspectTasks()` returns the scheduler's queued task snapshot.
+- `inspectSignals()` returns `{ name, connections }` records.
+- `inspectRemoteTraffic()` returns shallow copies of logged remote and teleport records.
+
 ## Sandbox Integration
 
 Sandbox globals include:
 
 - `game`
+- `workspace`
 - fake datatype globals like `Vector3`, `CFrame`, `Color3`, `UDim2`, and `BrickColor`
 - `Instance`
+- `createEnvironment`
+- `getEnvironment`
+- `Environment`
+- `Signal`
+- `Scheduler`
+- `Random`
 - `task`
 - created services such as `ReplicatedStorage`, `Players`, and `Workspace`
+- `LocalPlayer` when the active environment has one
 
 Special mount behavior currently implemented:
 
@@ -504,11 +610,13 @@ Special mount behavior currently implemented:
 
 Mounted module trees are lazily projected into fake instances and support Roblox-style requires through the sandbox.
 
-## Passing Runtime Config Through Test Suites
+Sandbox switching behavior:
 
-The runner currently forwards `testData.environment` into the sandbox runtime for a suite, and `selection.environment` for script selections.
-
-That means a suite can provide environment config alongside its normal test metadata if you are constructing manifests programmatically or extending manifest data in-repo.
+- `env:install()` swaps the active sandbox globals to that environment.
+- `env:uninstall()` restores the base sandbox environment.
+- uninstalling a non-active environment errors
+- uninstalling the base environment errors
+- custom globals added while one environment is active are preserved with that environment when switching away and back
 
 ## Current Scope And Non-Goals
 

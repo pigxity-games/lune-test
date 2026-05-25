@@ -206,11 +206,11 @@ function Environment.new(config)
 
 	self.Instance = {
 		new = function(className: string, parent)
-			return self:_newInstance(className, parent)
+			return self:_newInstance(className, parent, false)
 		end,
 	}
 
-	self.game = self:_newInstance("DataModel")
+	self.game = self:_newInstance("DataModel", nil, true)
 	self.game.Name = "game"
 	self.game.GetService = function(_, serviceName: string)
 		return self:getService(serviceName)
@@ -322,10 +322,17 @@ function Environment:_refreshTaggedInstancePresence(instance)
 	end
 end
 
-function Environment:_newInstance(className: string, parent)
+function Environment:_newInstance(className: string, parent, allowNonCreatable: boolean?)
+	local allowedClassNames = self._availableInstanceTypes
+
+	if allowNonCreatable and not ClassData.isCreatable(className) then
+		allowedClassNames = shallowClone(self._availableInstanceTypes)
+		allowedClassNames.__allowNonCreatable = true
+	end
+
 	local instance = InstanceModule.new(className, parent, {
 		runtime = self,
-		allowedClassNames = self._availableInstanceTypes,
+		allowedClassNames = allowedClassNames,
 		signalRegistry = self._signalRegistry,
 	})
 
@@ -418,32 +425,60 @@ function Environment:_logRemoteTraffic(kind: string, remote, player, args)
 	})
 end
 
+function Environment:_sanitizeRemoteValue(value, targetPlayer)
+	if type(value) == "function" or type(value) == "thread" then
+		return nil
+	end
+
+	if type(value) == "table" and value._isFakeRobloxInstance then
+		if not self:_isInDataModel(value) then
+			return nil
+		end
+
+		return value
+	end
+
+	return value
+end
+
+function Environment:_sanitizeRemoteArgs(targetPlayer, args)
+	local sanitized = {}
+
+	for index, value in ipairs(args) do
+		sanitized[index] = self:_sanitizeRemoteValue(value, targetPlayer)
+	end
+
+	return sanitized
+end
+
 function Environment:_fireServerEvent(remote, player, ...)
-	local args = { ... }
+	local args = self:_sanitizeRemoteArgs(nil, { ... })
 	self:_logRemoteTraffic("FireServer", remote, player, args)
-	remote.OnServerEvent:Fire(player, ...)
+	remote.OnServerEvent:Fire(player, unpack(args))
 end
 
 function Environment:_fireClientEvent(remote, player, ...)
 	assert(player ~= nil, `RemoteEvent "{remote.Name}" requires a player for FireClient`)
-	local args = { ... }
+	local args = self:_sanitizeRemoteArgs(player, { ... })
 	self:_logRemoteTraffic("FireClient", remote, player, args)
-	self:_getRemoteClientEventSignal(remote, player):Fire(...)
+	self:_getRemoteClientEventSignal(remote, player):Fire(unpack(args))
 
 	if player == self._localPlayer then
-		remote.OnClientEvent:Fire(...)
+		remote.OnClientEvent:Fire(unpack(args))
 	end
 end
 
 function Environment:_invokeServer(remote, player, ...)
-	self:_logRemoteTraffic("InvokeServer", remote, player, { ... })
+	local args = self:_sanitizeRemoteArgs(nil, { ... })
+	self:_logRemoteTraffic("InvokeServer", remote, player, args)
 	assert(remote.OnServerInvoke ~= nil, `RemoteFunction "{remote.Name}" has no OnServerInvoke handler`)
-	return remote.OnServerInvoke(player, ...)
+	return remote.OnServerInvoke(player, unpack(args))
 end
 
 function Environment:_invokeClient(remote, player, ...)
 	assert(player ~= nil, `RemoteFunction "{remote.Name}" requires a player for InvokeClient`)
-	self:_logRemoteTraffic("InvokeClient", remote, player, { ... })
+	local args = self:_sanitizeRemoteArgs(player, { ... })
+	self:_logRemoteTraffic("InvokeClient", remote, player, args)
 
 	local handler = remote._clientInvokeHandlers[player]
 
@@ -453,7 +488,7 @@ function Environment:_invokeClient(remote, player, ...)
 
 	assert(handler ~= nil, `RemoteFunction "{remote.Name}" has no OnClientInvoke handler for {player.Name}`)
 
-	return handler(...)
+	return handler(unpack(args))
 end
 
 function Environment:_bindRemoteForPlayer(remote, player)
@@ -505,7 +540,7 @@ function Environment:_bindRemoteForPlayer(remote, player)
 end
 
 function Environment:_createRunService()
-	local service = self:_newInstance("RunService", self.game)
+	local service = self:_newInstance("RunService", self.game, true)
 	service.Name = "RunService"
 	service.Heartbeat = Signal.new("RunService.Heartbeat", self._signalRegistry)
 	service.Stepped = Signal.new("RunService.Stepped", self._signalRegistry)
@@ -523,9 +558,9 @@ function Environment:_createRunService()
 end
 
 function Environment:_createCollectionService()
-	local service = self:_newInstance("CollectionService", self.game)
+	local service = self:_newInstance("CollectionService", self.game, true)
 	service.Name = "CollectionService"
-	service.AddTag = function(_, instance, tag: string)
+	rawset(service, "AddTag", function(_, instance, tag: string)
 		local state = ensureTagState(self._tagState, tag)
 
 		if state.set[instance] then
@@ -537,8 +572,8 @@ function Environment:_createCollectionService()
 		instance._collectionTags = instance._collectionTags or {}
 		instance._collectionTags[tag] = true
 		self:_setTaggedInstancePresence(state, instance, self:_isInDataModel(instance))
-	end
-	service.RemoveTag = function(_, instance, tag: string)
+	end)
+	rawset(service, "RemoveTag", function(_, instance, tag: string)
 		local state = self._tagState[tag]
 
 		if state == nil or not state.set[instance] then
@@ -552,11 +587,11 @@ function Environment:_createCollectionService()
 			instance._collectionTags[tag] = nil
 		end
 		self:_setTaggedInstancePresence(state, instance, false)
-	end
-	service.HasTag = function(_, instance, tag: string)
+	end)
+	rawset(service, "HasTag", function(_, instance, tag: string)
 		local state = self._tagState[tag]
 		return state ~= nil and state.set[instance] == true
-	end
+	end)
 	service.GetTagged = function(_, tag: string)
 		local state = self._tagState[tag]
 
@@ -589,7 +624,7 @@ function Environment:_createCollectionService()
 end
 
 function Environment:_createPlayersService()
-	local service = self:_newInstance("Players", self.game)
+	local service = self:_newInstance("Players", self.game, true)
 	service.Name = "Players"
 	service.PlayerAdded = Signal.new("Players.PlayerAdded", self._signalRegistry)
 	service.PlayerRemoving = Signal.new("Players.PlayerRemoving", self._signalRegistry)
@@ -604,7 +639,7 @@ function Environment:_createPlayersService()
 end
 
 function Environment:_createMemoryStoreService()
-	local service = self:_newInstance("MemoryStoreService", self.game)
+	local service = self:_newInstance("MemoryStoreService", self.game, true)
 	service.Name = "MemoryStoreService"
 	service.GetSortedMap = function(_, name: string)
 		local map = self._memoryStoreMaps[name]
@@ -637,18 +672,19 @@ function Environment:_createMemoryStoreService()
 					return nil
 				end
 
-				return entry.value
+				return entry.value, entry.sortKey
 			end,
-			SetAsync = function(_, key: string, value, expirationSeconds: number?)
+			SetAsync = function(_, key: string, value, expirationSeconds: number?, sortKey)
 				state[key] = {
 					value = value,
+					sortKey = sortKey,
 					expiresAt = if expirationSeconds ~= nil then self.scheduler:now() + expirationSeconds else nil,
 				}
 			end,
 			UpdateAsync = function(_, key: string, transform, expirationSeconds: number?)
-				local oldValue = map:GetAsync(key)
+				local oldValue, oldSortKey = map:GetAsync(key)
 				local oldEntry = getLiveEntry(key)
-				local newValue = transform(oldValue)
+				local newValue, newSortKey = transform(oldValue, oldSortKey)
 
 				if newValue == nil then
 					return nil
@@ -656,12 +692,15 @@ function Environment:_createMemoryStoreService()
 
 				state[key] = {
 					value = newValue,
+					sortKey = if newSortKey ~= nil
+						then newSortKey
+						else if oldEntry ~= nil then oldEntry.sortKey else nil,
 					expiresAt = if expirationSeconds ~= nil
 						then self.scheduler:now() + expirationSeconds
 						else if oldEntry ~= nil then oldEntry.expiresAt else nil,
 				}
 
-				return newValue
+				return newValue, state[key].sortKey
 			end,
 			RemoveAsync = function(_, key: string)
 				state[key] = nil
@@ -676,11 +715,30 @@ function Environment:_createMemoryStoreService()
 						table.insert(items, {
 							key = key,
 							value = entry.value,
+							sortKey = entry.sortKey,
 						})
 					end
 				end
 
 				table.sort(items, function(a, b)
+					if a.sortKey ~= nil or b.sortKey ~= nil then
+						if a.sortKey == nil then
+							return false
+						end
+
+						if b.sortKey == nil then
+							return true
+						end
+
+						if a.sortKey ~= b.sortKey then
+							if sortDirection == defaultEnum.SortDirection.Descending then
+								return a.sortKey > b.sortKey
+							end
+
+							return a.sortKey < b.sortKey
+						end
+					end
+
 					if sortDirection == defaultEnum.SortDirection.Descending then
 						return a.key > b.key
 					end
@@ -710,6 +768,7 @@ function Environment:_createMemoryStoreService()
 					table.insert(items, {
 						key = key,
 						value = entry.value,
+						sortKey = entry.sortKey,
 					})
 				end
 
@@ -724,7 +783,7 @@ function Environment:_createMemoryStoreService()
 		self._memoryStoreMaps[name] = map
 		return map
 	end
-	service.GetQueue = function(_, name: string)
+	service.GetQueue = function(_, name: string, invisibilityTimeoutSeconds: number?)
 		local queue = self._memoryStoreQueues[name]
 
 		if queue ~= nil then
@@ -735,7 +794,21 @@ function Environment:_createMemoryStoreService()
 		local nextReservationId = 0
 		local nextSequenceNumber = 0
 
+		local visibilityTimeout = invisibilityTimeoutSeconds or 30
+
+		local function refreshReservation(item)
+			if
+				item.reservationId ~= nil
+				and item.reservationExpiresAt ~= nil
+				and item.reservationExpiresAt <= self.scheduler:now()
+			then
+				item.reservationId = nil
+				item.reservationExpiresAt = nil
+			end
+		end
+
 		local function isVisible(item)
+			refreshReservation(item)
 			return item.reservationId == nil
 		end
 
@@ -748,6 +821,7 @@ function Environment:_createMemoryStoreService()
 				if item.expiresAt ~= nil and item.expiresAt <= self.scheduler:now() then
 					table.remove(items, index)
 				else
+					refreshReservation(item)
 					table.insert(liveItems, 1, item)
 				end
 			end
@@ -799,6 +873,7 @@ function Environment:_createMemoryStoreService()
 
 				for index, item in ipairs(selectedItems) do
 					item.reservationId = reservationId
+					item.reservationExpiresAt = self.scheduler:now() + visibilityTimeout
 					values[index] = item.value
 				end
 
@@ -845,7 +920,7 @@ function Environment:_createMemoryStoreService()
 end
 
 function Environment:_createTeleportService()
-	local service = self:_newInstance("TeleportService", self.game)
+	local service = self:_newInstance("TeleportService", self.game, true)
 	service.Name = "TeleportService"
 	service.PrivateServerId = self._flags.privateServerId
 	service.PrivateServerOwnerId = self._flags.privateServerOwnerId
@@ -903,7 +978,7 @@ function Environment:_createTeleportService()
 end
 
 function Environment:_createGenericService(serviceName: string)
-	local service = self:_newInstance(serviceName, self.game)
+	local service = self:_newInstance(serviceName, self.game, true)
 	service.Name = serviceName
 	return service
 end
@@ -1064,7 +1139,7 @@ function Environment:addPlayer(config)
 	local backpack = self:_newInstance("Backpack", player)
 	backpack.Name = "Backpack"
 
-	local playerScripts = self:_newInstance("PlayerScripts", player)
+	local playerScripts = self:_newInstance("PlayerScripts", player, true)
 	playerScripts.Name = "PlayerScripts"
 
 	player.Parent = playersService

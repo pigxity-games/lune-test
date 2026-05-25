@@ -83,6 +83,8 @@ return {
 				environmentInstallUninstall = {},
 				multiEnvironmentParenting = {},
 				getEnvironmentReturnsCurrentEnvironment = {},
+				servicesAreNotCreatableThroughInstanceNew = {},
+				dataModelPrivateServerIdentifiersMatchRobloxCases = {},
 			},
 		},
 	},

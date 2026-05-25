@@ -5,7 +5,9 @@ Detailed fake runtime documentation is under [RUNTIME.md](./RUNTIME.md).
 
 It supports:
 - Roblox instance-based requires
+- repo-relative alias requires such as `require("@test/fixture-main/src/server/SomeModule")`
 - fake Roblox globals like `game`, `Instance`, `Vector3`, `Color3`, and more
+- a deterministic fake runtime with `Players`, `RunService`, `CollectionService`, `MemoryStoreService`, and `TeleportService`
 - manifest composition with child manifests
 - multiple workspaces
 - Rojo-derived mounts
@@ -50,6 +52,8 @@ lune run src/main.lua test/fixture-main/scripts/uses_modules.lua
 lune run src/main.lua test_runner_core,test/multi-workspace/scripts/game_script.lua --workspace game
 ```
 
+Each test case runs in a fresh sandbox. Module state, mounted service trees, and fake runtime state do not carry over between cases unless your test recreates that state explicitly.
+
 When running scripts:
 - each script runs in its own sandbox
 - the closest manifest is selected automatically by walking parent directories upward
@@ -62,6 +66,19 @@ lune run src/main.lua test/multi-workspace/scripts/game_script.lua --workspace g
 ```
 
 Script-only runs do not print `[TEST]`, `[PASS]`, or `TEST RESULTS`. Mixed script plus suite runs still use the normal reporter output.
+
+## Fake runtime
+The bundled fake Roblox runtime is documented in [RUNTIME.md](./RUNTIME.md).
+
+Highlights of the current runtime surface:
+- `createEnvironment(config)` for standalone deterministic runtime instances
+- `getEnvironment()` for accessing the currently installed sandbox environment
+- supported fake datatypes such as `Vector2`, `Vector3`, `CFrame`, `Color3`, `UDim`, `UDim2`, `BrickColor`, and `Random`
+- fake services including `Players`, `RunService`, `CollectionService`, `MemoryStoreService`, `TeleportService`, `Workspace`, `ReplicatedStorage`, and `ServerScriptService`
+- fake remotes with lightweight multi-client support through `env:spawnClient(...)`
+- instance tag helpers like `instance:AddTag(...)`, `instance:RemoveTag(...)`, `instance:HasTag(...)`, and `instance:GetTags()`
+
+Some service and runtime-owned classes are intentionally available through `game:GetService(...)` or runtime setup only and are not creatable through public `Instance.new(...)`. That includes `DataModel`, `RunService`, `CollectionService`, `MemoryStoreService`, `TeleportService`, `ReplicatedStorage`, `ServerScriptService`, `StarterPlayer`, `StarterPlayerScripts`, and `PlayerScripts`.
 
 ## Manifest format
 A manifest is a Lua file that returns a table.
@@ -223,6 +240,8 @@ Rules:
 - non-function exports are ignored
 
 For example, `test/auto-discovery/unit1/test1.lua` becomes the suite `unit1/test1`.
+
+Workspace definitions can also provide their own `testLocations`, and those discovered suites use that workspace's mounts.
 
 ## Script mode
 If the positional selection is a `.lua` or `.luau` file, it is run as a script inside a sandbox with Roblox globals and requires enabled.

@@ -105,6 +105,10 @@ local function assertSupportedClassName(className: string, allowedClassNames)
 		error(`Unsupported fake instance type "{className}". Available types: {joinNames(ClassData.list())}`, 3)
 	end
 
+	if not ClassData.isCreatable(className) and not (allowedClassNames and allowedClassNames.__allowNonCreatable) then
+		error(`Fake instance type "{className}" is not creatable through Instance.new`, 3)
+	end
+
 	if allowedClassNames == nil or allowedClassNames[className] then
 		return
 	end
@@ -329,6 +333,42 @@ function InstanceMethods:GetAttributeChangedSignal(attributeName: string)
 	end
 
 	return signal
+end
+
+function InstanceMethods:AddTag(tag: string)
+	local runtime = rawget(self, "_runtime")
+	assert(runtime ~= nil, "AddTag requires a fake environment runtime")
+	return runtime:getService("CollectionService"):AddTag(self, tag)
+end
+
+function InstanceMethods:RemoveTag(tag: string)
+	local runtime = rawget(self, "_runtime")
+	assert(runtime ~= nil, "RemoveTag requires a fake environment runtime")
+	return runtime:getService("CollectionService"):RemoveTag(self, tag)
+end
+
+function InstanceMethods:HasTag(tag: string)
+	local runtime = rawget(self, "_runtime")
+	if runtime == nil then
+		return false
+	end
+
+	return runtime:getService("CollectionService"):HasTag(self, tag)
+end
+
+function InstanceMethods:GetTags()
+	local tags = {}
+	local collectionTags = rawget(self, "_collectionTags") or {}
+
+	for tag, hasTag in pairs(collectionTags) do
+		if hasTag then
+			table.insert(tags, tag)
+		end
+	end
+
+	table.sort(tags)
+
+	return tags
 end
 
 function InstanceMethods:Destroy()
