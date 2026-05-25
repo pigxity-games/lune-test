@@ -464,7 +464,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		return paths.normalizeRequirePath(path)
 	end
 
-	local function loadFileModule(modulePath: string, scriptInstance)
+	local function loadFileModule(modulePath: string, scriptInstance, ...)
 		modulePath = paths.normalizeFilesystemPath(modulePath)
 
 		local cached = fileModuleCache[modulePath]
@@ -491,7 +491,10 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		sandboxGlobals.script = scriptInstance
 		sandboxGlobals.__currentFilePath = modulePath
 
-		local moduleOk, moduleResult = xpcall(moduleChunk, traceback)
+		local packedArgs = table.pack(...)
+		local moduleOk, moduleResult = xpcall(function()
+			return moduleChunk(unpack(packedArgs, 1, packedArgs.n))
+		end, traceback)
 
 		sandboxGlobals.script = oldScript
 		sandboxGlobals.__currentFilePath = oldCurrentFilePath
@@ -513,6 +516,8 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		if fileModulePath ~= nil then
 			loader = loadFileModule
 			loadTarget = fileModulePath
+		elseif modulePath:sub(1, 6) ~= "@lune/" then
+			error(`Unable to resolve module path "{modulePath}"`, 2)
 		end
 
 		local ok, result = pcall(loader, loadTarget, scriptInstance)

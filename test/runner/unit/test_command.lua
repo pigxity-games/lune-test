@@ -101,4 +101,28 @@ function m.suppressesReporterOutputForScriptOnlyRuns()
 	assert(mixed.stdout:find("TEST RESULTS:", 1, true) ~= nil)
 end
 
+function m.errorsWhenDashAHasNoScriptSelections()
+	local noSelectionsOk, noSelectionsError = pcall(function()
+		command.buildSelections({
+			manifestPath = nil,
+			workspaceName = nil,
+			selections = {},
+			scriptArgs = { "1", "testString", "123" },
+		})
+	end)
+	local suiteOnlyOk, suiteOnlyError = pcall(function()
+		command.buildSelections({
+			manifestPath = nil,
+			workspaceName = nil,
+			selections = { "test_runner_core" },
+			scriptArgs = { "1", "testString", "123" },
+		})
+	end)
+
+	assert(not noSelectionsOk)
+	assert(tostring(noSelectionsError):find("%-a requires at least one script selection", 1) ~= nil)
+	assert(not suiteOnlyOk)
+	assert(tostring(suiteOnlyError):find("%-a requires at least one script selection", 1) ~= nil)
+end
+
 return m

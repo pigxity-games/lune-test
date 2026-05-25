@@ -55,6 +55,7 @@ function command.buildSelections(options)
 	local manifestCache = {}
 	local plannedSelections = {}
 	local defaultManifest = nil
+	local hasScriptSelection = false
 
 	local function getDefaultManifest()
 		if defaultManifest == nil then
@@ -66,6 +67,8 @@ function command.buildSelections(options)
 	end
 
 	if #options.selections == 0 then
+		assert(#(options.scriptArgs or {}) == 0, "-a requires at least one script selection")
+
 		table.insert(plannedSelections, {
 			kind = "manifest",
 			manifest = getDefaultManifest(),
@@ -82,12 +85,14 @@ function command.buildSelections(options)
 			local manifest, manifestPath =
 				loadManifestCached(manifestCache, resolveScriptManifestPath(sourceFilePath, options.manifestPath))
 
+			hasScriptSelection = true
 			table.insert(plannedSelections, {
 				kind = "script",
 				filePath = paths.sourceFilePathWithoutExtension(sourceFilePath),
 				displayName = displayPath(sourceFilePath),
 				manifest = manifest,
 				manifestPath = manifestPath,
+				scriptArgs = options.scriptArgs or {},
 				mounts = manifestRunner.getMountsForScript(
 					manifest,
 					paths.sourceFilePathWithoutExtension(sourceFilePath),
@@ -102,6 +107,8 @@ function command.buildSelections(options)
 			})
 		end
 	end
+
+	assert(hasScriptSelection or #(options.scriptArgs or {}) == 0, "-a requires at least one script selection")
 
 	return plannedSelections
 end

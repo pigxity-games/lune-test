@@ -25,6 +25,7 @@ function cli.parseArgs(args)
 		manifestPath = nil,
 		workspaceName = nil,
 		selections = {},
+		scriptArgs = {},
 	}
 	local positionals = {}
 	local index = 1
@@ -44,6 +45,11 @@ function cli.parseArgs(args)
 			options.workspaceName = args[index]
 		elseif arg:match("^%-%-workspace=") then
 			options.workspaceName = arg:sub(#"--workspace=" + 1)
+		elseif arg == "-a" then
+			for argIndex = index + 1, #args do
+				table.insert(options.scriptArgs, args[argIndex])
+			end
+			break
 		else
 			table.insert(positionals, arg)
 		end

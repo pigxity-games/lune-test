@@ -643,6 +643,60 @@ function m.playersLookupAndLocalPlayerTransitions()
 	assert(serverEnv.globals.LocalPlayer == nil)
 end
 
+function m.addPlayerCreateCharacterSpawnsCharacterModel()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+	local player = env:addPlayer({
+		name = "Builder",
+		userId = 404,
+		createCharacter = true,
+	})
+
+	assertEqual(player.ClassName, "Player")
+	assert(player.Character ~= nil)
+	assertEqual(player.Character.ClassName, "Model")
+	assertEqual(player.Character.Name, "Builder")
+	assertEqual(player.Character.Parent, env.game:GetService("Workspace"))
+end
+
+function m.addPlayerRunHooksFalseSkipsPlayerAndCharacterSignals()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+	local players = env.game:GetService("Players")
+	local playerAddedCount = 0
+	local lastAddedPlayer = nil
+	local characterAddedCount = 0
+	local player = env.Instance.new("Player")
+
+	players.PlayerAdded:Connect(function(addedPlayer)
+		playerAddedCount += 1
+		lastAddedPlayer = addedPlayer
+	end)
+
+	player.CharacterAdded:Connect(function()
+		characterAddedCount += 1
+	end)
+
+	local returnedPlayer = env:addPlayer({
+		instance = player,
+		name = "SilentBuilder",
+		userId = 405,
+		createCharacter = true,
+		runHooks = false,
+	})
+
+	assertEqual(returnedPlayer, player)
+	assertEqual(playerAddedCount, 0)
+	assertEqual(lastAddedPlayer, nil)
+	assertEqual(characterAddedCount, 0)
+	assertEqual(players:GetPlayerByUserId(405), player)
+	assert(player.Character ~= nil)
+	assertEqual(player.Character.Name, "SilentBuilder")
+	assertEqual(player.Character.Parent, env.game:GetService("Workspace"))
+end
+
 function m.schedulerSupportsSpawnDeferDelayWaitAndHeartbeat()
 	local env = createEnvironment({
 		activePlayers = {},

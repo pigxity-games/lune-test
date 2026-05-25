@@ -40,6 +40,28 @@ function m.runsScriptSelectionsInSeparateSandboxes()
 	assert(results.total == 2)
 end
 
+function m.passesSameArgsToMultipleScripts()
+	local results = runner.runSelections({
+		{
+			kind = "script",
+			filePath = paths.sourceFilePathWithoutExtension("test/runner/fixtures/script_args/first.lua"),
+			displayName = "script_args_first",
+			mounts = fixtureMainMounts,
+			scriptArgs = { "1", "testString", "123" },
+		},
+		{
+			kind = "script",
+			filePath = paths.sourceFilePathWithoutExtension("test/runner/fixtures/script_args/second.lua"),
+			displayName = "script_args_second",
+			mounts = fixtureMainMounts,
+			scriptArgs = { "1", "testString", "123" },
+		},
+	})
+
+	assert(results.success)
+	assert(results.total == 2)
+end
+
 function m.runsMixedSuiteAndScriptSelections()
 	local expectedTotal = countSuiteCases(fixtureMainManifest, "test_module_requires") + 1
 	local results = runner.runSelections({
@@ -53,6 +75,7 @@ function m.runsMixedSuiteAndScriptSelections()
 			filePath = paths.sourceFilePathWithoutExtension("test/fixture-main/scripts/uses_modules.lua"),
 			displayName = "uses_modules",
 			mounts = fixtureMainMounts,
+			scriptArgs = { "1", "testString", "123" },
 		},
 	})
 

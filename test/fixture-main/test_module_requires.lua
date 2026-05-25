@@ -1,5 +1,15 @@
 local m = {}
 
+local function assertContains(haystack: string, needle: string)
+	assert(haystack:find(needle, 1, true) ~= nil, string.format('expected "%s" to contain "%s"', haystack, needle))
+end
+
+local function assertRequireError(callback, expectedMessage: string)
+	local ok, err = pcall(callback)
+	assert(not ok, "expected require to error")
+	assertContains(tostring(err), expectedMessage)
+end
+
 function m.replicatedStorageAndRelativeRequires()
 	local SomeModule = require("./src/server/SomeModule")
 	local add = SomeModule.add
@@ -30,6 +40,56 @@ end
 function m.aliasRequires()
 	local SomeModule = require("@test/fixture-main/src/server/SomeModule")
 	assert(SomeModule.add(1, 1) == 2, "1+1 is not 2")
+end
+
+function m.invalidRequiresProduceErrors()
+	assertRequireError(function()
+		require(ReplicatedStorage.InvalidPath)
+	end, "Cannot require value of type nil")
+
+	assertRequireError(function()
+		require(123)
+	end, "Cannot require value of type number")
+
+	assertRequireError(function()
+		require("/invalidPath")
+	end, 'Unable to resolve module path "invalidPath"')
+
+	assertRequireError(function()
+		require("12345")
+	end, 'Unable to resolve module path "12345"')
+
+	assertRequireError(function()
+		require("./invalidPath")
+	end, "missing module source for")
+
+	assertRequireError(function()
+		require("./")
+	end, "missing module source for")
+
+	assertRequireError(function()
+		require("/")
+	end, 'Unable to resolve module path ""')
+
+	assertRequireError(function()
+		require("../")
+	end, "missing module source for")
+
+	assertRequireError(function()
+		require("./src")
+	end, "missing module source for")
+
+	assertRequireError(function()
+		require("@invalidAlias")
+	end, 'Unable to resolve module path "@invalidAlias"')
+
+	assertRequireError(function()
+		require("@alias")
+	end, 'Unable to resolve module path "@alias"')
+
+	assertRequireError(function()
+		require("@alias/invalidPath")
+	end, 'Unable to resolve module path "@alias/invalidPath"')
 end
 
 return m

@@ -130,6 +130,14 @@ local function addToParent(parent, child)
 	getSignal(parent, "ChildAdded"):Fire(child)
 end
 
+local function remapCloneValue(value, cloneMap)
+	if type(value) == "table" and value._isFakeRobloxInstance then
+		return cloneMap[value]
+	end
+
+	return value
+end
+
 local function assertSupportedClassName(className: string, allowedClassNames)
 	if not ClassData.isSupported(className) then
 		error(`Unsupported fake instance type "{className}". Available types: {joinNames(ClassData.list())}`, 3)
@@ -572,6 +580,99 @@ local function createInstance(className: string, parent, config)
 	end
 
 	return self
+end
+
+function InstanceMethods:Clone()
+	local cloneMap = {}
+
+	local function createCloneNode(source, parent)
+		local runtime = rawget(source, "_runtime")
+		local clone
+
+		if runtime ~= nil and runtime._newInstance ~= nil then
+			clone = runtime:_newInstance(source.ClassName, nil, true)
+		else
+			clone = createInstance(source.ClassName, nil, {
+				runtime = runtime,
+				signalRegistry = rawget(source, "_signalRegistry"),
+				allowedClassNames = {
+					[source.ClassName] = true,
+					__allowNonCreatable = true,
+				},
+			})
+		end
+
+		cloneMap[source] = clone
+		rawset(clone, "_name", rawget(source, "_name"))
+
+		if parent ~= nil then
+			clone.Parent = parent
+		end
+
+		for _, child in ipairs(rawget(source, "_children")) do
+			createCloneNode(child, clone)
+		end
+
+		return clone
+	end
+
+	local function copyCloneState(source)
+		local clone = cloneMap[source]
+		local clonedProperties = {}
+		local clonedPropertyPresence = {}
+		local clonedAttributes = {}
+		local sourceProperties = rawget(source, "_properties")
+		local sourcePropertyPresence = rawget(source, "_propertyPresence")
+		local sourceAttributes = rawget(source, "_attributes")
+		local sourceTags = rawget(source, "_collectionTags")
+		local runtime = rawget(clone, "_runtime")
+
+		for propertyName, isPresent in pairs(sourcePropertyPresence) do
+			if isPresent then
+				clonedPropertyPresence[propertyName] = true
+				clonedProperties[propertyName] = remapCloneValue(sourceProperties[propertyName], cloneMap)
+			end
+		end
+
+		for attributeName, attributeValue in pairs(sourceAttributes) do
+			clonedAttributes[attributeName] = remapCloneValue(attributeValue, cloneMap)
+		end
+
+		rawset(clone, "_properties", clonedProperties)
+		rawset(clone, "_propertyPresence", clonedPropertyPresence)
+		rawset(clone, "_attributes", clonedAttributes)
+
+		if sourceTags ~= nil then
+			if runtime ~= nil then
+				local collectionService = runtime:getService("CollectionService")
+
+				for tag, hasTag in pairs(sourceTags) do
+					if hasTag then
+						collectionService:AddTag(clone, tag)
+					end
+				end
+			else
+				local clonedTags = {}
+
+				for tag, hasTag in pairs(sourceTags) do
+					if hasTag then
+						clonedTags[tag] = true
+					end
+				end
+
+				rawset(clone, "_collectionTags", clonedTags)
+			end
+		end
+
+		for _, child in ipairs(rawget(source, "_children")) do
+			copyCloneState(child)
+		end
+	end
+
+	local rootClone = createCloneNode(self, nil)
+	copyCloneState(self)
+
+	return rootClone
 end
 
 function Instance.new(className: string, parent, config)

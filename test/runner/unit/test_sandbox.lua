@@ -72,4 +72,17 @@ function m.mountedManifestStyleWaitForPathLoadsModule()
 	end)
 end
 
+function m.scriptParentInvalidRequireProducesError()
+	withMountedSandbox(function(box)
+		local replicatedStorage = box.game:GetService("ReplicatedStorage")
+		local invalidRequireModule = replicatedStorage:WaitForChild("Generated")
+			:WaitForChild("_Internal")
+			:WaitForChild("InvalidRequireFromScriptParent")
+		local result = box.require(invalidRequireModule)
+
+		assert(result.ok == false)
+		assert(result.err:find("Cannot require value of type nil", 1, true) ~= nil)
+	end)
+end
+
 return m

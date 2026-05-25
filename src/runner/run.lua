@@ -119,7 +119,7 @@ local function runScriptSelection(output, selection)
 		local oldCurrentFilePath = scriptSandbox.globals.__currentFilePath
 		scriptSandbox.globals.__currentFilePath = selection.filePath
 
-		local scriptResult = scriptSandbox.loadFileModule(selection.filePath)
+		local scriptResult = scriptSandbox.loadFileModule(selection.filePath, nil, unpack(selection.scriptArgs or {}))
 
 		scriptSandbox.globals.__currentFilePath = oldCurrentFilePath
 

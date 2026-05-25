@@ -209,6 +209,7 @@ Instances support:
 - `GetChildren()`
 - `GetDescendants()`
 - `IsA(className)`
+- `Clone()`
 - `Destroy()`
 - `ClearAllChildren()`
 
@@ -276,6 +277,14 @@ Parenting updates the child lists and named lookup tables immediately.
 - Returns `nil` on timeout.
 - Returns `nil` if the instance has no scheduler-backed runtime attached.
 - Returns `nil` if the current execution context cannot yield, such as top-level sandbox execution.
+
+### `Clone`
+
+`Clone()` returns a new unparented instance with the same class, name, properties, attributes, tags, and descendant tree as the source instance.
+
+- The clone is a distinct object with fresh signals and no copied listeners.
+- Descendants are recursively duplicated under the cloned root.
+- Mutating the clone does not mutate the original instance tree.
 
 ## Built-In Class Properties
 

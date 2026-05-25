@@ -1123,6 +1123,7 @@ end
 
 function Environment:addPlayer(config)
 	config = config or {}
+	local runHooks = config.runHooks ~= false
 
 	local playersService = self:getService("Players")
 	local player = config.instance or self:_newInstance("Player")
@@ -1146,14 +1147,16 @@ function Environment:addPlayer(config)
 
 	table.insert(self._players, player)
 	self._playerByUserId[player.UserId] = player
-	playersService.PlayerAdded:Fire(player)
+	if runHooks then
+		playersService.PlayerAdded:Fire(player)
+	end
 
 	if config.localPlayer then
 		self:assignLocalPlayer(player)
 	end
 
 	if config.createCharacter then
-		self:replaceCharacter(player, config.character)
+		self:replaceCharacter(player, config.character, runHooks)
 	end
 
 	return player
@@ -1188,9 +1191,15 @@ function Environment:removePlayer(player)
 	self:_refreshGlobals()
 end
 
-function Environment:replaceCharacter(player, characterConfig)
+function Environment:replaceCharacter(player, characterConfig, runHooks: boolean?)
+	if runHooks == nil then
+		runHooks = true
+	end
+
 	if player.Character ~= nil then
-		player.CharacterRemoving:Fire(player.Character)
+		if runHooks then
+			player.CharacterRemoving:Fire(player.Character)
+		end
 		player.Character:Destroy()
 	end
 
@@ -1207,7 +1216,10 @@ function Environment:replaceCharacter(player, characterConfig)
 
 	character.Parent = self:getService("Workspace")
 	player.Character = character
-	player.CharacterAdded:Fire(character)
+
+	if runHooks then
+		player.CharacterAdded:Fire(character)
+	end
 
 	return character
 end

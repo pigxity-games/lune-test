@@ -23,4 +23,21 @@ function m.detectsExistingScriptSelections()
 	assert(not cli.isScriptSelection("test_runner_core"))
 end
 
+function m.parsesScriptArgsAfterDashA()
+	local options = cli.parseArgs({
+		"test/fixture-main/scripts/uses_modules.lua",
+		"-a",
+		"1",
+		"testString",
+		"123",
+	})
+
+	assert(#options.selections == 1)
+	assert(options.selections[1] == "test/fixture-main/scripts/uses_modules.lua")
+	assert(#options.scriptArgs == 3)
+	assert(options.scriptArgs[1] == "1")
+	assert(options.scriptArgs[2] == "testString")
+	assert(options.scriptArgs[3] == "123")
+end
+
 return m

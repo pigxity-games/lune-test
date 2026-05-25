@@ -282,4 +282,57 @@ function m.instanceRenameWaitAndDestroy()
 	assertEqual(#child:GetChildren(), 0)
 end
 
+function m.instanceCloneCopiesHierarchyPropertiesAttributesAndTags()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+	local root = env.Instance.new("Folder")
+	local part = env.Instance.new("Part")
+	local value = env.Instance.new("NumberValue")
+
+	root.Name = "Root"
+	root:SetAttribute("Label", "Original")
+	root:AddTag("Cloneable")
+
+	part.Name = "Handle"
+	part.Transparency = 0.25
+	part.Position = Vector3.new(1, 2, 3)
+	part.Parent = root
+
+	value.Name = "Coins"
+	value.Value = 7
+	value.Parent = part
+
+	local clone = root:Clone()
+	local clonedPart = clone:FindFirstChild("Handle")
+	local clonedValue = clonedPart and clonedPart:FindFirstChild("Coins")
+
+	assert(clone ~= root)
+	assertEqual(clone.ClassName, "Folder")
+	assertEqual(clone.Name, "Root")
+	assertEqual(clone.Parent, nil)
+	assertEqual(clone:GetAttribute("Label"), "Original")
+	assert(clone:HasTag("Cloneable"))
+
+	assert(clonedPart ~= nil)
+	assert(clonedPart ~= part)
+	assertEqual(clonedPart.Parent, clone)
+	assertEqual(clonedPart.Transparency, 0.25)
+	assertEqual(clonedPart.Position, Vector3.new(1, 2, 3))
+
+	assert(clonedValue ~= nil)
+	assert(clonedValue ~= value)
+	assertEqual(clonedValue.Parent, clonedPart)
+	assertEqual(clonedValue.Value, 7)
+
+	clonedPart.Name = "ClonedHandle"
+	clonedValue.Value = 11
+	clone:SetAttribute("Label", "Clone")
+
+	assertEqual(part.Name, "Handle")
+	assertEqual(value.Value, 7)
+	assertEqual(root:GetAttribute("Label"), "Original")
+	assert(root:FindFirstChild("ClonedHandle") == nil)
+end
+
 return m

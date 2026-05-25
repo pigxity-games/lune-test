@@ -7,6 +7,7 @@ return {
 				playerScriptsClientRequires = {},
 				starterPlayerScriptsClientRequires = {},
 				aliasRequires = {},
+				invalidRequiresProduceErrors = {},
 			},
 		},
 		test_sandboxing = {
@@ -54,6 +55,7 @@ return {
 				randomUnitVectorAndShuffle = {},
 				instanceHierarchyAndLookup = {},
 				instanceRenameWaitAndDestroy = {},
+				instanceCloneCopiesHierarchyPropertiesAttributesAndTags = {},
 			},
 		},
 		test_fake_runtime = {
@@ -72,6 +74,8 @@ return {
 				pairedClientsShareReplicatedTreeAndLocalPlayerContext = {},
 				playersLifecycleAndCharacterReplacementAreDeterministic = {},
 				playersLookupAndLocalPlayerTransitions = {},
+				addPlayerCreateCharacterSpawnsCharacterModel = {},
+				addPlayerRunHooksFalseSkipsPlayerAndCharacterSignals = {},
 				schedulerSupportsSpawnDeferDelayWaitAndHeartbeat = {},
 				schedulerCancellationTimeoutRunAllAndErrors = {},
 				memoryStoreTeleportDiagnosticsAndResetWork = {},
