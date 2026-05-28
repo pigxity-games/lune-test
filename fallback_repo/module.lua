@@ -1,3 +1,0 @@
-return {
-	value = "repo-fallback",
-}

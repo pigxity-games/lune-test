@@ -94,6 +94,8 @@ return {
 				dataModelPrivateServerIdentifiersMatchRobloxCases = {},
 				waitForChildToplevel = {},
 				waitForChildToplevelMissingServiceChildReturnsNil = {},
+				baseEnvironmentInstallReloadsGlobals = {},
+				envConfigureGetEnvironment = {},
 			},
 		},
 	},

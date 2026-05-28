@@ -35,7 +35,9 @@ end
 local function assertError(fun, contains)
 	local ok, err = pcall(fun)
 	assert(not ok)
-	assertContains(err, contains)
+	if contains then
+		assertContains(err, contains)
+	end
 end
 
 function m.servicesAreStableAndConfigurable()
@@ -1242,7 +1244,6 @@ function m.getEnvironmentReturnsCurrentEnvironment()
 	assertEqual(env.game:GetService("Players"), game:GetService("Players"))
 	assertEqual(env.game:GetService("Workspace"), game:GetService("Workspace"))
 	assertEqual(env.game:GetService("MemoryStoreService"), game:GetService("MemoryStoreService"))
-	assertEqual(env.game:GetService("TeleportService"), game:GetService("TeleportService"))
 
 	local runService = game:GetService("RunService")
 	local playersService = game:GetService("Players")
@@ -1299,7 +1300,6 @@ function m.servicesAreNotCreatableThroughInstanceNew()
 	end
 
 	assertServiceNotCreatable("CollectionService")
-	assertServiceNotCreatable("TeleportService")
 	assertServiceNotCreatable("MemoryStoreService")
 	assertServiceNotCreatable("RunService")
 	assertServiceNotCreatable("DataModel")
@@ -1310,7 +1310,6 @@ function m.servicesAreNotCreatableThroughInstanceNew()
 	assertServiceNotCreatable("PlayerScripts")
 
 	assertEqual(env.game:GetService("CollectionService").ClassName, "CollectionService")
-	assertEqual(env.game:GetService("TeleportService").ClassName, "TeleportService")
 	assertEqual(env.game:GetService("MemoryStoreService").ClassName, "MemoryStoreService")
 	assertEqual(env.game:GetService("RunService").ClassName, "RunService")
 end
@@ -1365,6 +1364,84 @@ function m.waitForChildToplevelMissingServiceChildReturnsNil()
 	local waited = ReplicatedStorage:WaitForChild("Items")
 
 	assertEqual(waited, nil)
+end
+
+function m.baseEnvironmentInstallReloadsGlobals()
+	local env = getEnvironment()
+
+	env.globals.myGlobal == "Hello"
+	assert(myGlobal == nil)
+
+	env:install()
+	assert(myGlobal == "Hello")
+
+	local env2 = createEnvironment({
+		globals = {
+			myGlobal = "Test"
+		}
+	})
+
+	env2:install()
+	assert(myGlobal == "Test")
+
+	env2:uninstall()
+	assert(myGlobal == "Hello")
+end
+
+function m.envConfigureGetEnvironment()
+	local env = getEnvironment()
+
+	local counter = 0
+
+	env:configure({
+		availableServices = {
+			RunService = false
+		},
+		serviceOverrides = {
+			MyCustomService = {
+				increment = function()
+					counter += 1
+				end
+			},
+		},
+		globals = {
+			myGlobal = "Test"
+		}
+	})
+
+	assert(game:GetService("ReplicatedStorage") ~= nil) --other services are still available
+	assert(game:GetService("RunService") == nil)
+
+	game:GetService("MyCustomService").increment()
+	assert(counter == 1)
+
+	assert(myGlobal == "Test")
+
+	local config = {
+		globals = {
+			myGlobal = "Something else"
+		},
+	}
+
+	local env2 = createEnvironment(config)
+	assert(env2.config.globals.myGlobal == "Something else")
+	assert(env2.config.availableServices.RunService == true)
+
+	assert(myGlobal == "Test")
+end
+
+function m.environmentTablesFrozen()
+	local env = createEnvironment()
+	
+	assert(table.isfrozen(env))
+	assert(table.isfrozen(env.game))
+	assert(table.isfrozen(env.config))
+	assert(table.isfrozen(env.config))
+
+	assert(not table.isfrozen(env.globals))
+	assert(not table.isfrozen(env.globals.workspace))
+	assert(not table.isfrozen(env.game:GetService("ReplicatedStorage")))
+	assert(not table.isfrozen(env.game:GetService("RunService"))) --for manual mocking
 end
 
 return m

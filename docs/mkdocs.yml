@@ -1,0 +1,27 @@
+site_name: lune-test
+site_url: https://pigxity-games.github.io/lune-test
+theme:
+  icon:
+    logo: material/flask-outline
+  features:
+    - content.code.copy
+    - navigation.instant
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+  name: material
+  font:
+    text: Noto Sans
+    code: Source Code Pro
+  palette:
+    scheme: slate
+    primary: black
+    accent: deep purple
+repo_url: https://github.com/pigxity-games/lune-test
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  
