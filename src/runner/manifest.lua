@@ -3,6 +3,7 @@ local process = require("@lune/process")
 local serde = require("@lune/serde")
 
 local paths = require("./paths")
+local sandbox = require("./sandbox")
 
 local manifestRunner = {}
 
@@ -144,6 +145,27 @@ local function discoveredTestName(manifestFilePath: string, sourceFilePath: stri
 	return paths.normalizeRequirePath(paths.sourceFilePathWithoutExtension(sourceFilePath))
 end
 
+local function discoverTestCases(modulePath: string, moduleIsFile: boolean, mounts, environment)
+	local discoverySandbox = sandbox.create(mounts, environment)
+	discoverySandbox.install()
+	discoverySandbox.globals.__currentFilePath = if moduleIsFile then modulePath else nil
+
+	local suiteModule = if moduleIsFile
+		then discoverySandbox.loadFileModule(modulePath)
+		else discoverySandbox.require(modulePath)
+	local cases = {}
+
+	for exportName, exportValue in pairs(suiteModule) do
+		if type(exportName) == "string" and type(exportValue) == "function" then
+			cases[exportName] = {}
+		end
+	end
+
+	discoverySandbox.uninstall()
+
+	return cases
+end
+
 local function discoverTestsFromLocations(testLocations, manifestFilePath: string, manifestMounts)
 	assert(type(testLocations) == "table", "manifest.testLocations must be a table")
 
@@ -177,12 +199,15 @@ local function discoverTestsFromLocations(testLocations, manifestFilePath: strin
 
 				assert(discoveredTests[testName] == nil, `duplicate test suite: {testName}`)
 
+				local modulePath = paths.sourceFilePathWithoutExtension(candidateFile)
+				local cases = discoverTestCases(modulePath, true, manifestMounts, nil)
+
 				discoveredTests[testName] = {
-					module = paths.sourceFilePathWithoutExtension(candidateFile),
+					module = modulePath,
 					moduleIsFile = true,
-					cases = {},
+					cases = cases,
 					mounts = manifestMounts,
-					discoverCases = true,
+					discoverCases = false,
 				}
 			end
 		end
@@ -201,8 +226,17 @@ local function mergeDiscoveredTests(
 	local discoveredTests = discoverTestsFromLocations(testLocations, manifestFilePath, mounts)
 
 	for testName, testData in pairs(discoveredTests) do
-		assert(normalizedTests[testName] == nil, `{errorPrefix}: {testName}`)
-		normalizedTests[testName] = testData
+		local existingTestData = normalizedTests[testName]
+
+		if existingTestData == nil then
+			normalizedTests[testName] = testData
+		elseif existingTestData.module == testData.module then
+			for caseName, caseValue in pairs(testData.cases) do
+				if existingTestData.cases[caseName] == nil then
+					existingTestData.cases[caseName] = caseValue
+				end
+			end
+		end
 	end
 end
 

@@ -75,6 +75,66 @@ local function getSignal(self, name: string)
 	return signal
 end
 
+local function createNamedChildWaitSignal(self, name: string)
+	local signal = Signal.new(`{self.Name}.WaitForChild({name})`, rawget(self, "_signalRegistry"))
+	local watchedConnections = {}
+	local childAddedConnection
+	local childRemovedConnection
+
+	local function disconnectChild(child)
+		local connection = watchedConnections[child]
+
+		if connection ~= nil then
+			connection:Disconnect()
+			watchedConnections[child] = nil
+		end
+	end
+
+	local function maybeFire(child)
+		if child.Parent == self and child.Name == name then
+			signal:Fire(child)
+		end
+	end
+
+	local function watchChild(child)
+		disconnectChild(child)
+		watchedConnections[child] = child:GetPropertyChangedSignal("Name"):Connect(function()
+			maybeFire(child)
+		end)
+		maybeFire(child)
+	end
+
+	for _, child in ipairs(self._children) do
+		watchChild(child)
+	end
+
+	childAddedConnection = getSignal(self, "ChildAdded"):Connect(function(child)
+		watchChild(child)
+	end)
+
+	childRemovedConnection = getSignal(self, "ChildRemoved"):Connect(function(child)
+		disconnectChild(child)
+	end)
+
+	local function cleanup()
+		if childAddedConnection ~= nil then
+			childAddedConnection:Disconnect()
+			childAddedConnection = nil
+		end
+
+		if childRemovedConnection ~= nil then
+			childRemovedConnection:Disconnect()
+			childRemovedConnection = nil
+		end
+
+		for child in pairs(watchedConnections) do
+			disconnectChild(child)
+		end
+	end
+
+	return signal, cleanup
+end
+
 local function firePropertyChanged(self, propertyName: string, value)
 	local propertySignals = rawget(self, "_propertySignals")
 	local propertySignal = propertySignals[propertyName]
@@ -297,14 +357,10 @@ function InstanceMethods:WaitForChild(name: string, timeout: number?)
 		return nil
 	end
 
-	return scheduler:waitForSignal(
-		getSignal(self, "ChildAdded"),
-		function(candidate)
-			return candidate.Name == name
-		end,
-		timeout,
-		`waiting for {formatChildWaitPath(self, name)}`
-	)
+	local signal, cleanup = createNamedChildWaitSignal(self, name)
+	local result = scheduler:waitForSignal(signal, nil, timeout, `waiting for {formatChildWaitPath(self, name)}`)
+	cleanup()
+	return result
 end
 
 function InstanceMethods:GetChildren()

@@ -1,18 +1,9 @@
+local TestHelpers = require("@test/test_helpers")
+
+local assertEqual = TestHelpers.assertEqual
+local assertRequireError = TestHelpers.assertRequireError
+
 local m = {}
-
-local function assertEqual(actual, expected, message)
-	assert(actual == expected, message or string.format("expected %s, got %s", tostring(expected), tostring(actual)))
-end
-
-local function assertContains(haystack: string, needle: string)
-	assert(haystack:find(needle, 1, true) ~= nil, string.format('expected "%s" to contain "%s"', haystack, needle))
-end
-
-local function assertRequireError(callback, expectedMessage: string)
-	local ok, err = pcall(callback)
-	assert(not ok, "expected require to error")
-	assertContains(tostring(err), expectedMessage)
-end
 
 function m.replicatedStorageAndRelativeRequires()
 	local SomeModule = require("./src/server/SomeModule")

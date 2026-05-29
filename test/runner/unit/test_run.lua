@@ -120,4 +120,32 @@ function m.topLevelMissingChildReturnsNilDuringCaseExecution()
 	assert(results.total == 1)
 end
 
+function m.topLevelSuiteModuleErrorsAbortImmediately()
+	local ok, err = pcall(function()
+		runner.runSelections({
+			{
+				kind = "suite",
+				manifest = {
+					tests = {
+						invalid_suite_module = {
+							module = "test/runner/fixtures/invalid_suite_module/top_level_error_suite",
+							cases = {
+								caseOne = {},
+								caseTwo = {},
+							},
+							mounts = fixtureMainMounts,
+							moduleIsFile = false,
+							discoverCases = false,
+						},
+					},
+				},
+				suiteName = "invalid_suite_module",
+			},
+		})
+	end)
+
+	assert(not ok)
+	assert(tostring(err):find("suite exploded at top level", 1, true) ~= nil)
+end
+
 return m

@@ -14,7 +14,25 @@ local function loadTestModule(caseSandbox, testData)
 		else caseSandbox.require(testData.module)
 end
 
-local function discoverCaseNames(caseSandbox, testData)
+local function loadSuiteModuleOnce(testData)
+	local discoverySandbox = sandbox.create(testData.mounts, testData.environment)
+	discoverySandbox.install()
+
+	local success, result = xpcall(function()
+		discoverySandbox.globals.__currentFilePath = if testData.moduleIsFile then testData.module else nil
+		return loadTestModule(discoverySandbox, testData)
+	end, withTraceback)
+
+	discoverySandbox.uninstall()
+
+	if not success then
+		error(result, 0)
+	end
+
+	return result
+end
+
+local function discoverCaseNames(testData, module)
 	if not testData.discoverCases then
 		local caseNames = {}
 
@@ -25,7 +43,6 @@ local function discoverCaseNames(caseSandbox, testData)
 		return caseNames
 	end
 
-	local module = loadTestModule(caseSandbox, testData)
 	local caseNames = {}
 
 	for exportName, exportValue in pairs(module) do
@@ -40,11 +57,8 @@ end
 local function runSuite(output, testName: string, testData)
 	output.beginSuite(testName)
 
-	local discoverySandbox = sandbox.create(testData.mounts, testData.environment)
-	discoverySandbox.install()
-	discoverySandbox.globals.__currentFilePath = if testData.moduleIsFile then testData.module else nil
-	local caseNames = discoverCaseNames(discoverySandbox, testData)
-	discoverySandbox.uninstall()
+	local suiteModule = loadSuiteModuleOnce(testData)
+	local caseNames = discoverCaseNames(testData, suiteModule)
 
 	for _, caseName in ipairs(caseNames) do
 		local deps = testData.cases[caseName]

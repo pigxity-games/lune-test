@@ -138,6 +138,55 @@ function m.scriptOnlyFailuresPrintErrorsAndExitNonZero()
 	assert(result.stdout:find("@test/test_helperss", 1, true) ~= nil)
 end
 
+function m.invalidSuiteModuleErrorsBeforeRunningEveryCase()
+	local result = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"--manifest",
+		"test/runner/fixtures/invalid_suite_module/manifest.lua",
+	})
+
+	assert(not result.ok)
+	assert(result.code == 1)
+	assert(result.stdout:find("%[TEST%]: invalid_suite_module", 1, false) ~= nil, result.stdout)
+	assert(not result.stdout:find("%[FAIL%]:", 1, false), result.stdout)
+	assert(not result.stdout:find("TEST RESULTS:", 1, true), result.stdout)
+	assert(result.stdout:find("syntax_error_suite", 1, true) ~= nil, result.stdout)
+end
+
+function m.invalidManifestSyntaxErrorsBeforeAnySuiteRuns()
+	local result = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"--manifest",
+		"test/runner/fixtures/invalid_manifest_syntax/manifest.lua",
+	})
+
+	assert(not result.ok)
+	assert(result.code == 1)
+	assert(not result.stdout:find("%[TEST%]:", 1, false), result.stdout)
+	assert(not result.stdout:find("%[FAIL%]:", 1, false), result.stdout)
+	assert(not result.stdout:find("TEST RESULTS:", 1, true), result.stdout)
+	assert(result.stdout:find("manifest.lua", 1, true) ~= nil, result.stdout)
+	assert(result.stdout:find("syntax error", 1, true) ~= nil, result.stdout)
+end
+
+function m.invalidManifestTopLevelErrorsBeforeAnySuiteRuns()
+	local result = process.exec("lune", {
+		"run",
+		"src/main.lua",
+		"--manifest",
+		"test/runner/fixtures/invalid_manifest_top_level/manifest.lua",
+	})
+
+	assert(not result.ok)
+	assert(result.code == 1)
+	assert(not result.stdout:find("%[TEST%]:", 1, false), result.stdout)
+	assert(not result.stdout:find("%[FAIL%]:", 1, false), result.stdout)
+	assert(not result.stdout:find("TEST RESULTS:", 1, true), result.stdout)
+	assert(result.stdout:find("manifest exploded at top level", 1, true) ~= nil, result.stdout)
+end
+
 function m.printsWarningsForFallbackAliasResolution()
 	local repoFallback = process.exec("lune", {
 		"run",

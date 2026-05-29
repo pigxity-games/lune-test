@@ -1,36 +1,14 @@
+local TestHelpers = require("@test/test_helpers")
+
+local assertClose = TestHelpers.assertClose
+local assertColor3Equal = TestHelpers.assertColor3Equal
+local assertEqual = TestHelpers.assertEqual
+local assertUDim2Equal = TestHelpers.assertUDim2Equal
+local assertUDimEqual = TestHelpers.assertUDimEqual
+local assertVector2Equal = TestHelpers.assertVector2Equal
+local assertVector3Equal = TestHelpers.assertVector3Equal
+
 local m = {}
-
-local function assertEqual(actual, expected, message)
-	assert(actual == expected, message or string.format("expected %s, got %s", tostring(expected), tostring(actual)))
-end
-
-local function assertVector2Equal(actual, x, y)
-	assertEqual(actual, Vector2.new(x, y))
-end
-
-local function assertVector3Equal(actual, x, y, z)
-	assertEqual(actual, Vector3.new(x, y, z))
-end
-
-local function assertUDimEqual(actual, scale, offset)
-	assertEqual(actual, UDim.new(scale, offset))
-end
-
-local function assertUDim2Equal(actual, xScale, xOffset, yScale, yOffset)
-	assertEqual(actual, UDim2.new(xScale, xOffset, yScale, yOffset))
-end
-
-local function assertColor3Equal(actual, expected)
-	assertEqual(actual, expected, string.format("expected Color3 %s, got %s", tostring(expected), tostring(actual)))
-end
-
-local function assertClose(actual, expected, epsilon, label)
-	local difference = math.abs(actual - expected)
-	assert(
-		difference <= epsilon,
-		string.format("%s expected %.6f, got %.6f (difference %.6f)", label or "value", expected, actual, difference)
-	)
-end
 
 function m.vector2DefaultsAndConstants()
 	assertVector2Equal(Vector2.new(), 0, 0)

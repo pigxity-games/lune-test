@@ -26,9 +26,10 @@ The best way to modify an environment's settings is to configure it. This method
 
 `createEnvironment` and `configure` allow specifying a config table. The table has the following options:
 
+- `isStudio`, `isServer`, `isClient`: runtime flags exposed through `RunService`.
 - `availableServices`: a set of service names accessible through `game:GetService("...")`. By default, all built-in services are set to `true`. All keys in `serviceOverrides` are also implicitly `true`.
 - `serviceOverrides`: allows specifying overrides to specific service methods/fields without mutating the entire service table. Adding a new entry adds a new custom service.
-- `datamodel`: a table that allows specifying custom fields for the data model, like `game.myField`.
+- `datamodel`: a table that allows specifying custom fields for the data model, like `game.myField`, `game.PrivateServerId`, or `game.PrivateServerOwnerId`.
 - `globals`: allows specifying custom globals for the environment without overriding default globals.
 
 You may obtain the current configuration from the `.config` property, but that table is frozen and can only be modified via `:configure`.

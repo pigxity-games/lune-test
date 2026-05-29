@@ -138,8 +138,6 @@ local function clonePublicConfig(config)
 		isStudio = config.isStudio,
 		isServer = config.isServer,
 		isClient = config.isClient,
-		privateServerId = config.privateServerId,
-		privateServerOwnerId = config.privateServerOwnerId,
 	}
 end
 
@@ -214,15 +212,11 @@ function Environment.new(config)
 			isStudio = if config.isStudio ~= nil then config.isStudio else true,
 			isServer = if config.isServer ~= nil then config.isServer else true,
 			isClient = if config.isClient ~= nil then config.isClient else true,
-			privateServerId = config.privateServerId or "",
-			privateServerOwnerId = config.privateServerOwnerId or 0,
 		},
 		_flags = {
 			isStudio = if config.isStudio ~= nil then config.isStudio else true,
 			isServer = if config.isServer ~= nil then config.isServer else true,
 			isClient = if config.isClient ~= nil then config.isClient else true,
-			privateServerId = config.privateServerId or "",
-			privateServerOwnerId = config.privateServerOwnerId or 0,
 		},
 		_availableServices = cloneAvailableServices(config.availableServices, config.serviceOverrides),
 		_availableInstanceTypes = normalizeSet(config.availableInstanceTypes, ClassData.list()),
@@ -339,8 +333,8 @@ function Environment:_isServiceEnabled(serviceName: string): boolean
 end
 
 function Environment:_syncDataModelProperties()
-	self.game.PrivateServerId = self._flags.privateServerId
-	self.game.PrivateServerOwnerId = self._flags.privateServerOwnerId
+	self.game.PrivateServerId = ""
+	self.game.PrivateServerOwnerId = 0
 end
 
 function Environment:_applyConfiguredDataModelProperties()
@@ -1237,6 +1231,7 @@ function Environment:configure(config)
 	end
 
 	self:_syncDataModelProperties()
+	self:_applyConfiguredDataModelProperties()
 	self:_updatePublicConfig()
 
 	for serviceName, service in pairs(self._services) do
@@ -1267,8 +1262,6 @@ function Environment:reset(config)
 		nextConfig.isStudio = self._configState.isStudio
 		nextConfig.isServer = self._configState.isServer
 		nextConfig.isClient = self._configState.isClient
-		nextConfig.privateServerId = self._configState.privateServerId
-		nextConfig.privateServerOwnerId = self._configState.privateServerOwnerId
 	end
 
 	local replacement = Environment.new(nextConfig)

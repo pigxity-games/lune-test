@@ -61,6 +61,8 @@ task.spawn(function()
 	finished = true
 end)
 
+env.scheduler:flush() --starts the thread
+
 env.scheduler:advance(1)
 assert(finished == false)
 
