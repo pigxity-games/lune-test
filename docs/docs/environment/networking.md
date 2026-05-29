@@ -2,7 +2,7 @@
 
 The fake runtime supports Roblox-style `RemoteEvent` and `RemoteFunction` instances. They route calls between the server environment and fake client Player instances.
 
-Functions, threads, and instances outside the fake data model are replaced with `nil` for remote event arguments.
+Functions, threads, and instances outside the fake data model are replaced with `nil` in remote event arguments.
 
 ## RemoteEvent
 
@@ -59,23 +59,22 @@ assert(remote:InvokeServer(2, 3) == 5)
 
 ## Creating players
 
-Unlike client-to-server events, serverside event calls require player instances. To create a fake Player instance, use `env:addPlayer(config)`. It returns a Player instance with a Character, Backpack, and PlayerScripts.
+Unlike client-to-server events, server-side event calls require player instances. To create a fake Player instance, use `env:addPlayer(config)`. It returns a Player instance with a Character, Backpack, and PlayerScripts.
 
 Config:
 
 - `name`: string; defaults to a generated string.
-- `userId`: number; defaults to a generated uid.
-- `localPlayer`: boolean; if true, sets it as the environment's active local player and allows access through `Players.LocalPlayer`. Overrides the default LocalPlayer.
-- `createCharacter`: boolean; if true, creates a character model under workspace and assigns `Player.Character`
-- `character`: Model; if not nil, uses this model as the character instead of a new one
+- `userId`: number; defaults to a generated user ID.
+- `localPlayer`: boolean; if true, sets it as the environment's active local player and allows access through `Players.LocalPlayer`. Overrides the default `LocalPlayer`.
+- `createCharacter`: boolean; if true, creates a character model under `workspace` and assigns `Player.Character`.
+- `character`: Model; if not `nil`, uses this model as the character instead of a new one.
 - `runHooks`: boolean; defaults to true. If false, skips `Players.PlayerAdded` and `Player.CharacterAdded` hooks.
-
 
 ## Server-to-Client
 
 ### Single-player events
 
-If you only need to test events with one player, simply use `OnClientEvent` or `OnClientInvoke` with a player that has `localPlayer=true`
+If you only need to test events with one player, simply use `OnClientEvent` or `OnClientInvoke` with a player that has `localPlayer = true`.
 
 ```lua
 local player = env:addPlayer({
@@ -86,9 +85,9 @@ local player = env:addPlayer({
 local remote = Instance.new("RemoteEvent", game:GetService("ReplicatedStorage"))
 local n = 0
 
-remote.OnClientEvent:Connect(function(player, valuee))
+remote.OnClientEvent:Connect(function(player, value)
     n += 1
-end
+end)
 
 remote:FireClient(player)
 assert(n == 1)
@@ -103,7 +102,7 @@ local player1 = env:addPlayer({
     name = "Player1"
 })
 
-local player2 = env:AddPlayer({
+local player2 = env:addPlayer({
     name = "Player2"
 })
 

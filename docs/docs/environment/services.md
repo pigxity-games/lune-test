@@ -1,6 +1,6 @@
 # Services
 
-Fake services are created through `game:GetService("...")`. The same service object is returned each time within an environment.
+Fake services are created through `game:GetService("...")`. The same service object is returned each time within a given environment.
 
 ```lua
 local replicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,13 +18,13 @@ By default, these services are available:
 - `StarterPlayer`
 - `Workspace`
 
-Use `availableServices` when creating an environment to limit or extend the service list.
+Use `availableServices` when creating an environment to limit or extend the service list. It must be a map of `serviceName = true/false` entries.
 
 ```lua
 local env = createEnvironment({
 	availableServices = {
-		"ReplicatedStorage",
-		"MyCustomService",
+		ReplicatedStorage = true,
+		MyCustomService = true,
 	},
 	serviceOverrides = {
 		MyCustomService = {

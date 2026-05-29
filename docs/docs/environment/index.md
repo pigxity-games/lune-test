@@ -1,11 +1,12 @@
 # Environment API
+
 An environment represents the state of the fake Roblox runtime. Every test suite and script automatically runs in its own environment, which is what allows access to globals such as `game`.
 
-The runner exposes two custom globals: `getEnvironment`, which could be used to obtain the current environment, and `createEnvironment`, which creates an entirely seperate environment.
+The runner exposes two custom globals: `getEnvironment`, which can be used to obtain the current environment, and `createEnvironment`, which creates an entirely separate environment.
 
 An environment object has the following fields:
 
-- `globals`: a list of globals which would be injected into `getfenv` on environment install. This includes Roblox defaults such as `game` and `workspace`, but not luau-native globals, such as `require`.
+- `globals`: a list of globals that would be injected into `getfenv` on environment install. This includes Roblox defaults such as `game` and `workspace`, but not Luau-native globals such as `require`.
 - `game`: the fake `DataModel`.
 - `Instance`: the environment-bound `Instance` factory.
 - `task`: the environment-bound task library.
@@ -20,13 +21,14 @@ assert(part == env.game:GetService("Workspace").Part)
 ```
 
 ## Configuring
-The best way to modify an environment's settings is to configure it. This method accepts a table, which merges data with current settings. If the environment is active, config is also automatically applied.
+
+The best way to modify an environment's settings is to configure it. This method accepts a table, which merges data with the current settings. If the environment is active, the config is also applied automatically.
 
 `createEnvironment` and `configure` allow specifying a config table. The table has the following options:
 
 - `availableServices`: a set of service names accessible through `game:GetService("...")`. By default, all built-in services are set to `true`. All keys in `serviceOverrides` are also implicitly `true`.
 - `serviceOverrides`: allows specifying overrides to specific service methods/fields without mutating the entire service table. Adding a new entry adds a new custom service.
-- `datamodel`: a table which allows specifying custom fields for the datamodel, like `game.myField`.
+- `datamodel`: a table that allows specifying custom fields for the data model, like `game.myField`.
 - `globals`: allows specifying custom globals for the environment without overriding default globals.
 
 You may obtain the current configuration from the `.config` property, but that table is frozen and can only be modified via `:configure`.
@@ -64,6 +66,7 @@ assert(myGlobal == "Test")
 `configure` merges environment config into the active environment and refreshes globals, data model fields, service availability, and service overrides immediately.
 
 ## Installing an Environment
+
 Creating a new environment or modifying the global table directly does not sync globals with the environment state. To set an environment as active, run the `:install()` method. This sets global values under `globals` as actual globals in the sandbox.
 
 ```lua
@@ -96,7 +99,7 @@ Custom global values in _G are also bound to environment state.
 
 - `Environment.new(config)`: creates an environment. In tests, prefer the global `createEnvironment(config)`.
 - `Environment.getActiveEnvironment()`: returns the active environment. In tests, prefer the global `getEnvironment()`.
-- `env:getService(name)`: returns a fake service or errors if the service is unavailable.
+- `env:getService(name)`: returns a fake service or `nil` if the service is unavailable.
 - `env:addPlayer(config)`: creates a fake `Player`, parents it to `Players`, and fires lifecycle signals unless `runHooks = false`.
 - `env:assignLocalPlayer(player)`: sets `Players.LocalPlayer` and the `LocalPlayer` global.
 - `env:getPlayers()`: returns a copy of the active players array.

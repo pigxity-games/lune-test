@@ -1,6 +1,6 @@
 # Datatypes and Instances
 
-The fake environment provides some Roblox datatypes and objects.
+The fake environment provides several Roblox datatypes and objects.
 
 ## Globals
 
@@ -165,7 +165,7 @@ assert(a:Dot(b) == 32)
 - `Inverse()`
 - multiplication, addition, subtraction, equality, and string conversion
 
-It only tracks position and stored orientation values. Operators are not performed on orientation.
+It only tracks position and stored orientation values. Operators do not operate on orientation.
 
 ## Color3
 

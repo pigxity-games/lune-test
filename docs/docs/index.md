@@ -6,11 +6,11 @@ It is built for Roblox code that expects `game`, `Instance`, services, datatypes
 ## Features
 
 - Roblox instance-based requires and require-by-string support, allowing mounting of files onto Roblox services.
-- A fake Roblox environment, which emulates the datamodel, common services, and networking. Environments are very customizable, allowing creation of custom mock services.
+- A fake Roblox environment that emulates the data model, common services, and networking. Environments are very customizable, allowing the creation of custom mock services.
 - Sandboxing and creation of multiple environments in a single script/test with easy swapping.
 - Deriving service mounts from a Rojo project file.
 - Multiple workspaces in the manifest.
-- Luau script running using the same environment and APIs.
+- Running Luau scripts using the same environment and APIs.
 
 ## Installation
 

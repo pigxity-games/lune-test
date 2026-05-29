@@ -105,6 +105,7 @@ return {
 				teleportServiceIsRemovedEntirely = {},
 				rbxScriptSignalUsesNewGlobalNames = {},
 				availableServicesRejectsLegacyArrayFormat = {},
+				getServiceReturnsNilForUnavailableServices = {},
 			},
 		},
 	},

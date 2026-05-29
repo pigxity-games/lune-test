@@ -16,7 +16,7 @@ lune run lune-test -m test/manifest.lua
 lune run lune-test --manifest=test/manifest.lua
 ```
 
-The manifest path can include or omit a `.lua` / `.luau` extension.
+The manifest path can include or omit a `.lua` or `.luau` extension.
 
 ## Running suites
 

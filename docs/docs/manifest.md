@@ -1,6 +1,6 @@
 # Manifest Format
 
-Manifests are Luau modules that return a table. A manifest describes the location of tests and mounting of services.
+Manifests are Luau modules that return a table. A manifest describes the location of tests and how services are mounted.
 
 Basic example:
 
@@ -133,7 +133,7 @@ mounts = {
 }
 ```
 
-`_root` mounts a folder at the current service path. Other keys continue it.
+`_root` mounts a folder at the current service path. Other keys continue the path.
 
 `PlayerScripts` mounts under `Players.LocalPlayer.PlayerScripts` and `StarterPlayer.StarterPlayerScripts`, allowing client-style requires to work from either location.
 
@@ -178,7 +178,7 @@ Discovered files with `.lua` or `.luau` extensions become suites. Functions insi
 
 ## Workspaces
 
-`workspaces` allows for creation of multiple mount layouts.
+`workspaces` allows the creation of multiple mount layouts.
 
 ```lua
 return {

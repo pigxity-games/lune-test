@@ -1558,4 +1558,17 @@ function m.availableServicesRejectsLegacyArrayFormat()
 	end, "availableServices must be a set of serviceName = true/false entries")
 end
 
+function m.getServiceReturnsNilForUnavailableServices()
+	local env = createEnvironment({
+		activePlayers = {},
+		availableServices = {
+			RunService = false,
+		},
+	})
+
+	assertEqual(env:getService("RunService"), nil)
+	assertEqual(env.game:GetService("RunService"), nil)
+	assert(env:getService("ReplicatedStorage") ~= nil)
+end
+
 return m
