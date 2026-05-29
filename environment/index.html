@@ -654,9 +654,10 @@
 <p>The best way to modify an environment's settings is to configure it. This method accepts a table, which merges data with the current settings. If the environment is active, the config is also applied automatically.</p>
 <p><code>createEnvironment</code> and <code>configure</code> allow specifying a config table. The table has the following options:</p>
 <ul>
+<li><code>isStudio</code>, <code>isServer</code>, <code>isClient</code>: runtime flags exposed through <code>RunService</code>.</li>
 <li><code>availableServices</code>: a set of service names accessible through <code>game:GetService("...")</code>. By default, all built-in services are set to <code>true</code>. All keys in <code>serviceOverrides</code> are also implicitly <code>true</code>.</li>
 <li><code>serviceOverrides</code>: allows specifying overrides to specific service methods/fields without mutating the entire service table. Adding a new entry adds a new custom service.</li>
-<li><code>datamodel</code>: a table that allows specifying custom fields for the data model, like <code>game.myField</code>.</li>
+<li><code>datamodel</code>: a table that allows specifying custom fields for the data model, like <code>game.myField</code>, <code>game.PrivateServerId</code>, or <code>game.PrivateServerOwnerId</code>.</li>
 <li><code>globals</code>: allows specifying custom globals for the environment without overriding default globals.</li>
 </ul>
 <p>You may obtain the current configuration from the <code>.config</code> property, but that table is frozen and can only be modified via <code>:configure</code>.</p>

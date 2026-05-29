@@ -775,6 +775,8 @@
 <span class="w">    </span><span class="nv">finished</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 <span class="kr">end</span><span class="p">)</span>
 
+<span class="nv">env</span><span class="p">.</span><span class="py">scheduler</span><span class="p">:</span><span class="nf">flush</span><span class="p">()</span><span class="w"> </span><span class="c1">--starts the thread</span>
+
 <span class="nv">env</span><span class="p">.</span><span class="py">scheduler</span><span class="p">:</span><span class="nf">advance</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 <span class="nb">assert</span><span class="p">(</span><span class="nv">finished</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">false</span><span class="p">)</span>
 
