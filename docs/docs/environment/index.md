@@ -102,7 +102,6 @@ Custom global values in _G are also bound to environment state.
 - `env:getPlayers()`: returns a copy of the active players array.
 - `env:removePlayer(player)`: fires removal signals, destroys the player character, and removes the player.
 - `env:replaceCharacter(player, characterConfig, runHooks)`: replaces `player.Character`.
-- `env:spawnClient(config)`: creates a client context with its own `LocalPlayer` and a helper for player-bound remotes.
 - `env:overrideService(serviceName, override)`: applies or replaces a service override.
 - `env:configure(config)`: merges config into the live environment and refreshes globals, datamodel fields, and service availability.
 - `env:reset(config)`: replaces the environment state while keeping the same active environment object.

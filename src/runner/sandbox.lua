@@ -11,6 +11,8 @@ local baseGlobals = getfenv(0)
 local realRequire = require
 local cachedLuaurcAliases = nil
 local warnedFallbacks = {}
+local managedBaseGlobalValues = {}
+local managedBaseGlobalPresence = {}
 
 local function traceback(err)
 	return debug.traceback(tostring(err), 2)
@@ -206,11 +208,11 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	local function composeSandboxValues(targetEnvironment, includeCustomGlobals)
 		local values = {}
 
-		for key, value in pairs(targetEnvironment.globals) do
+		for key, value in pairs(fake) do
 			values[key] = value
 		end
 
-		for key, value in pairs(fake) do
+		for key, value in pairs(targetEnvironment.globals) do
 			values[key] = value
 		end
 
@@ -264,6 +266,11 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 			sandboxGlobals[key] = value
 
 			if installedGlobalsSnapshot ~= nil then
+				if not managedBaseGlobalPresence[key] then
+					managedBaseGlobalValues[key] = baseGlobals[key]
+					managedBaseGlobalPresence[key] = true
+				end
+
 				if not installedGlobalPresence[key] then
 					installedGlobalsSnapshot[key] = baseGlobals[key]
 					installedGlobalPresence[key] = true
@@ -678,6 +685,10 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 			return
 		end
 
+		for key, value in pairs(managedBaseGlobalValues) do
+			baseGlobals[key] = value
+		end
+
 		Environment.setActiveInstallController(controller)
 		Environment.setActiveEnvironment(environment)
 		applyEnvironmentGlobals(environment)
@@ -696,8 +707,8 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 			return
 		end
 
-		for key, value in pairs(installedGlobalsSnapshot) do
-			baseGlobals[key] = value
+		for key in pairs(installedGlobalPresence) do
+			baseGlobals[key] = installedGlobalsSnapshot[key]
 		end
 
 		installedGlobalsSnapshot = nil

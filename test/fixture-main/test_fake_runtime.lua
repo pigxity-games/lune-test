@@ -248,6 +248,37 @@ function m.signalDisconnectAllAndDisconnectDuringFire()
 	assert(not thirdConnection.Connected)
 end
 
+function m.signalConnectPlayerTargetsSpecificPlayers()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
+	local firstPlayer = env:addPlayer({
+		name = "Player1",
+		userId = 701,
+	})
+	local secondPlayer = env:addPlayer({
+		name = "Player2",
+		userId = 702,
+	})
+	local signal = RBXScriptSignal.new("PlayerSignal")
+	local firstTotal = 0
+	local secondTotal = 0
+
+	signal:ConnectPlayer(firstPlayer, function(value)
+		firstTotal += value
+	end)
+	signal:ConnectPlayer(secondPlayer, function(value)
+		secondTotal += value
+	end)
+
+	signal:FireForPlayer(firstPlayer, 1)
+	signal:FireForPlayer(secondPlayer, 3)
+
+	assertEqual(firstTotal, 1)
+	assertEqual(secondTotal, 3)
+	assertEqual(signal:GetConnectionCount(), 2)
+end
+
 function m.collectionServiceTracksTagsAndCleanup()
 	local env = createEnvironment({
 		activePlayers = {},
@@ -345,6 +376,91 @@ function m.collectionServiceSignalsDataModelMembershipChanges()
 	assertEqual(removed, 1)
 end
 
+function m.networkingDocsRemoteEventClientToServerExample()
+	local remote = Instance.new("RemoteEvent", game:GetService("ReplicatedStorage"))
+	remote.Name = "Ping"
+
+	local received
+	remote.OnServerEvent:Connect(function(player, value)
+		received = { player = player, value = value }
+	end)
+
+	remote:FireServer("hello")
+
+	assert(received.player == game:GetService("Players").LocalPlayer)
+	assert(received.value == "hello")
+end
+
+function m.networkingDocsRemoteFunctionClientToServerExample()
+	local remote = Instance.new("RemoteFunction", game:GetService("ReplicatedStorage"))
+	remote.Name = "Add"
+
+	remote.OnServerInvoke = function(player, a, b)
+		return a + b
+	end
+
+	assert(remote:InvokeServer(2, 3) == 5)
+end
+
+function m.networkingDocsSinglePlayerServerToClientExample()
+	local env = getEnvironment()
+	local player = env:addPlayer({
+		name = "Player",
+		localPlayer = true,
+	})
+
+	local remote = Instance.new("RemoteEvent", game:GetService("ReplicatedStorage"))
+	local n = 0
+
+	remote.OnClientEvent:Connect(function(playerArg, valuee)
+		n += 1
+	end)
+
+	remote:FireClient(player)
+	assert(n == 1)
+end
+
+function m.networkingDocsMultiPlayerServerToClientExample()
+	local env = getEnvironment()
+	local player1 = env:addPlayer({
+		name = "Player1",
+	})
+
+	local player2 = env:addPlayer({
+		name = "Player2",
+	})
+
+	local player1Count = 0
+	local player2Count = 0
+
+	local remote = Instance.new("RemoteEvent", game:GetService("ReplicatedStorage"))
+
+	remote.OnClientEvent:ConnectPlayer(player1, function(num)
+		player1Count += num
+	end)
+	remote.OnClientEvent:ConnectPlayer(player2, function(num)
+		player2Count += num
+	end)
+
+	remote:FireClient(player1, 1)
+	remote:FireClient(player2, 3)
+
+	assert(player1Count == 1)
+	assert(player2Count == 3)
+end
+
+function m.networkingDocsDiagnosticsExample()
+	local env = getEnvironment()
+	local remote = Instance.new("RemoteEvent", game:GetService("ReplicatedStorage"))
+	remote.Name = "LogMe"
+
+	remote:FireServer("payload")
+
+	local traffic = env:inspectRemoteTraffic()
+	assert(traffic[#traffic].kind == "FireServer")
+	assert(traffic[#traffic].remoteName == "LogMe")
+end
+
 function m.remoteEventRoutesAcrossServerAndClients()
 	local env = createEnvironment({
 		activePlayers = {
@@ -357,11 +473,10 @@ function m.remoteEventRoutesAcrossServerAndClients()
 	})
 	local remote = env.Instance.new("RemoteEvent")
 	local defaultPlayer = env.globals.Players.LocalPlayer
-	local secondClient = env:spawnClient({
+	local secondPlayer = env:addPlayer({
 		name = "Secondary",
 		userId = 11,
 	})
-	local secondRemote = secondClient:bindRemote(remote)
 	local serverEvents = {}
 	local primaryMessages = {}
 	local secondaryMessages = {}
@@ -370,7 +485,6 @@ function m.remoteEventRoutesAcrossServerAndClients()
 
 	remote.Parent = env.globals.ReplicatedStorage
 	assertEqual(env.game:GetService("ReplicatedStorage"):FindFirstChild("PingEvent"), remote)
-	assertEqual(secondClient.game:GetService("ReplicatedStorage"):FindFirstChild("PingEvent"), remote)
 
 	remote.OnServerEvent:Connect(function(player, message)
 		table.insert(serverEvents, `{player.Name}:{message}`)
@@ -378,12 +492,14 @@ function m.remoteEventRoutesAcrossServerAndClients()
 	remote.OnClientEvent:Connect(function(message)
 		table.insert(primaryMessages, message)
 	end)
-	secondRemote.OnClientEvent:Connect(function(message)
+	remote.OnClientEvent:ConnectPlayer(secondPlayer, function(message)
 		table.insert(secondaryMessages, message)
 	end)
 
 	remote:FireServer("alpha")
-	secondRemote:FireServer("beta")
+	env:assignLocalPlayer(secondPlayer)
+	remote:FireServer("beta")
+	env:assignLocalPlayer(defaultPlayer)
 	remote:FireClient(defaultPlayer, "direct")
 	remote:FireAllClients("broadcast")
 
@@ -406,7 +522,6 @@ function m.remoteEventRoutesAcrossServerAndClients()
 	edgeRemote.Name = "EdgeEvent"
 	edgeRemote.Parent = env.globals.ReplicatedStorage
 
-	local secondEdgeRemote = secondClient:bindRemote(edgeRemote)
 	local serverSawFunctionArg = "unset"
 	local clientSawHiddenInstance = "unset"
 
@@ -414,17 +529,19 @@ function m.remoteEventRoutesAcrossServerAndClients()
 		serverSawFunctionArg = functionArg
 	end)
 
-	secondEdgeRemote.OnClientEvent:Connect(function(instanceArg)
+	edgeRemote.OnClientEvent:ConnectPlayer(secondPlayer, function(instanceArg)
 		clientSawHiddenInstance = instanceArg
 	end)
 
-	secondEdgeRemote:FireServer(function() end)
+	env:assignLocalPlayer(secondPlayer)
+	edgeRemote:FireServer(function() end)
+	env:assignLocalPlayer(defaultPlayer)
 	assertEqual(serverSawFunctionArg, nil)
 
 	local serverOnlyFolder = env.Instance.new("Folder")
 	serverOnlyFolder.Name = "ServerOnlyFolder"
 
-	edgeRemote:FireClient(secondClient.LocalPlayer, serverOnlyFolder)
+	edgeRemote:FireClient(secondPlayer, serverOnlyFolder)
 	assertEqual(clientSawHiddenInstance, nil)
 end
 
@@ -439,11 +556,11 @@ function m.remoteFunctionSupportsInvokeServerAndClient()
 		},
 	})
 	local remote = env.Instance.new("RemoteFunction")
-	local secondClient = env:spawnClient({
+	local defaultPlayer = env.globals.Players.LocalPlayer
+	local secondPlayer = env:addPlayer({
 		name = "Secondary",
 		userId = 22,
 	})
-	local secondRemote = secondClient:bindRemote(remote)
 
 	remote.Name = "PingFunction"
 	remote.OnServerInvoke = function(player, number)
@@ -452,14 +569,12 @@ function m.remoteFunctionSupportsInvokeServerAndClient()
 	remote.OnClientInvoke = function(number)
 		return number + 1
 	end
-	secondRemote.OnClientInvoke = function(number)
-		return number + 5
-	end
 
 	assertEqual(remote:InvokeServer(6), "Primary:12")
-	assertEqual(secondRemote:InvokeServer(4), "Secondary:8")
-	assertEqual(remote:InvokeClient(env.globals.Players.LocalPlayer, 10), 11)
-	assertEqual(remote:InvokeClient(secondClient.LocalPlayer, 10), 15)
+	env:assignLocalPlayer(secondPlayer)
+	assertEqual(remote:InvokeServer(4), "Secondary:8")
+	env:assignLocalPlayer(defaultPlayer)
+	assertEqual(remote:InvokeClient(defaultPlayer, 10), 11)
 end
 
 function m.remoteFailuresProduceActionableErrors()
@@ -498,13 +613,10 @@ function m.remoteFailuresProduceActionableErrors()
 		},
 	})
 	local remoteFunction = env.Instance.new("RemoteFunction")
-	local remoteEvent = env.Instance.new("RemoteEvent")
-	local client = env:spawnClient({
+	local secondaryPlayer = env:addPlayer({
 		name = "Secondary",
 		userId = 92,
 	})
-	local clientRemoteFunction = client:bindRemote(remoteFunction)
-	local clientRemoteEvent = client:bindRemote(remoteEvent)
 
 	local missingServerInvokeOk, missingServerInvokeError = pcall(function()
 		remoteFunction:InvokeServer(10)
@@ -513,22 +625,10 @@ function m.remoteFailuresProduceActionableErrors()
 	assertContains(missingServerInvokeError, "no OnServerInvoke handler")
 
 	local missingClientInvokeOk, missingClientInvokeError = pcall(function()
-		remoteFunction:InvokeClient(client.LocalPlayer, 10)
+		remoteFunction:InvokeClient(secondaryPlayer, 10)
 	end)
 	assert(not missingClientInvokeOk)
 	assertContains(missingClientInvokeError, "no OnClientInvoke handler")
-
-	local unsupportedOverrideOk, unsupportedOverrideError = pcall(function()
-		clientRemoteFunction.UnsupportedField = true
-	end)
-	assert(not unsupportedOverrideOk)
-	assertContains(unsupportedOverrideError, "Unsupported client remote field override")
-
-	local unsupportedEventOverrideOk, unsupportedEventOverrideError = pcall(function()
-		clientRemoteEvent.UnsupportedField = true
-	end)
-	assert(not unsupportedEventOverrideOk)
-	assertContains(unsupportedEventOverrideError, "Unsupported client remote field override")
 end
 
 function m.pairedClientsShareReplicatedTreeAndLocalPlayerContext()
@@ -542,7 +642,7 @@ function m.pairedClientsShareReplicatedTreeAndLocalPlayerContext()
 		},
 	})
 	local sharedFolder = env.Instance.new("Folder")
-	local secondClient = env:spawnClient({
+	local secondPlayer = env:addPlayer({
 		name = "Secondary",
 		userId = 32,
 	})
@@ -551,11 +651,15 @@ function m.pairedClientsShareReplicatedTreeAndLocalPlayerContext()
 	sharedFolder.Parent = env.globals.ReplicatedStorage
 
 	assertEqual(env.game:GetService("ReplicatedStorage").SharedFolder, sharedFolder)
-	assertEqual(secondClient.game:GetService("ReplicatedStorage").SharedFolder, sharedFolder)
 	assertEqual(env.globals.Players.LocalPlayer.Name, "Primary")
-	assertEqual(secondClient.game:GetService("Players").LocalPlayer.Name, "Secondary")
-	assert(secondClient.game:GetService("Players").LocalPlayer.PlayerScripts ~= nil)
-	assert(secondClient.game:GetService("Players").LocalPlayer.Backpack ~= nil)
+	assertEqual(secondPlayer.PlayerScripts.Name, "PlayerScripts")
+	assertEqual(secondPlayer.Backpack.Name, "Backpack")
+
+	env:assignLocalPlayer(secondPlayer)
+
+	assertEqual(env.game:GetService("Players").LocalPlayer.Name, "Secondary")
+	assertEqual(env.globals.LocalPlayer, secondPlayer)
+	assertEqual(env.game:GetService("ReplicatedStorage").SharedFolder, sharedFolder)
 end
 
 function m.playersLifecycleAndCharacterReplacementAreDeterministic()

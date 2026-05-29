@@ -201,33 +201,6 @@ local function removeArrayValue(items, value)
 	end
 end
 
-local function createPlayersProxy(sharedPlayers, localPlayer)
-	return setmetatable({}, {
-		__index = function(_, key)
-			if key == "LocalPlayer" then
-				return localPlayer
-			end
-
-			local value = sharedPlayers[key]
-
-			if type(value) == "function" then
-				return function(_, ...)
-					return value(sharedPlayers, ...)
-				end
-			end
-
-			return value
-		end,
-		__newindex = function(_, key, value)
-			if key == "LocalPlayer" then
-				error("LocalPlayer is controlled by the fake environment", 2)
-			end
-
-			sharedPlayers[key] = value
-		end,
-	})
-end
-
 function Environment.new(config)
 	config = config or {}
 
@@ -261,7 +234,6 @@ function Environment.new(config)
 		_tagState = {},
 		_remoteTraffic = {},
 		_remoteInstances = {},
-		_clients = {},
 		_memoryStoreMaps = {},
 		_memoryStoreQueues = {},
 		_persistenceAdapters = shallowClone(config.persistenceAdapters),
@@ -465,7 +437,6 @@ function Environment:_configureInstance(instance)
 	if instance:IsA("RemoteEvent") then
 		instance.OnServerEvent = Signal.new(`{instance.Name}.OnServerEvent`, self._signalRegistry)
 		instance.OnClientEvent = Signal.new(`{instance.Name}.OnClientEvent`, self._signalRegistry)
-		instance._clientEventSignals = {}
 		instance.FireServer = function(remote, ...)
 			local player = self._localPlayer
 			assert(player ~= nil, `RemoteEvent "{remote.Name}" cannot FireServer without a LocalPlayer`)
@@ -486,7 +457,6 @@ function Environment:_configureInstance(instance)
 	if instance:IsA("RemoteFunction") then
 		instance.OnServerInvoke = nil
 		instance.OnClientInvoke = nil
-		instance._clientInvokeHandlers = {}
 		instance.InvokeServer = function(remote, ...)
 			local player = self._localPlayer
 			assert(player ~= nil, `RemoteFunction "{remote.Name}" cannot InvokeServer without a LocalPlayer`)
@@ -498,21 +468,6 @@ function Environment:_configureInstance(instance)
 		table.insert(self._remoteInstances, instance)
 		return
 	end
-end
-
-function Environment:_getRemoteClientEventSignal(remote, player)
-	if player == nil then
-		return remote.OnClientEvent
-	end
-
-	local signal = remote._clientEventSignals[player]
-
-	if signal == nil then
-		signal = Signal.new(`{remote.Name}.OnClientEvent[{player.Name}]`, self._signalRegistry)
-		remote._clientEventSignals[player] = signal
-	end
-
-	return signal
 end
 
 function Environment:_logRemoteTraffic(kind: string, remote, player, args)
@@ -560,7 +515,7 @@ function Environment:_fireClientEvent(remote, player, ...)
 	assert(player ~= nil, `RemoteEvent "{remote.Name}" requires a player for FireClient`)
 	local args = self:_sanitizeRemoteArgs(player, { ... })
 	self:_logRemoteTraffic("FireClient", remote, player, args)
-	self:_getRemoteClientEventSignal(remote, player):Fire(unpack(args))
+	remote.OnClientEvent:FireForPlayer(player, unpack(args))
 
 	if player == self._localPlayer then
 		remote.OnClientEvent:Fire(unpack(args))
@@ -578,64 +533,11 @@ function Environment:_invokeClient(remote, player, ...)
 	assert(player ~= nil, `RemoteFunction "{remote.Name}" requires a player for InvokeClient`)
 	local args = self:_sanitizeRemoteArgs(player, { ... })
 	self:_logRemoteTraffic("InvokeClient", remote, player, args)
-
-	local handler = remote._clientInvokeHandlers[player]
-
-	if handler == nil and player == self._localPlayer then
-		handler = remote.OnClientInvoke
-	end
+	local handler = if player == self._localPlayer then remote.OnClientInvoke else nil
 
 	assert(handler ~= nil, `RemoteFunction "{remote.Name}" has no OnClientInvoke handler for {player.Name}`)
 
 	return handler(unpack(args))
-end
-
-function Environment:_bindRemoteForPlayer(remote, player)
-	return setmetatable({}, {
-		__index = function(_, key)
-			if remote:IsA("RemoteEvent") then
-				if key == "FireServer" then
-					return function(_, ...)
-						return self:_fireServerEvent(remote, player, ...)
-					end
-				end
-
-				if key == "OnClientEvent" then
-					return self:_getRemoteClientEventSignal(remote, player)
-				end
-			end
-
-			if remote:IsA("RemoteFunction") then
-				if key == "InvokeServer" then
-					return function(_, ...)
-						return self:_invokeServer(remote, player, ...)
-					end
-				end
-
-				if key == "OnClientInvoke" then
-					return remote._clientInvokeHandlers[player]
-				end
-			end
-
-			local value = remote[key]
-
-			if type(value) == "function" then
-				return function(_, ...)
-					return value(remote, ...)
-				end
-			end
-
-			return value
-		end,
-		__newindex = function(_, key, value)
-			if remote:IsA("RemoteFunction") and key == "OnClientInvoke" then
-				remote._clientInvokeHandlers[player] = value
-				return
-			end
-
-			error(`Unsupported client remote field override: {key}`, 2)
-		end,
-	})
 end
 
 function Environment:_createRunService()
@@ -1271,56 +1173,6 @@ function Environment:replaceCharacter(player, characterConfig, runHooks: boolean
 	end
 
 	return character
-end
-
-function Environment:spawnClient(config)
-	config = config or {}
-
-	local player = config.player
-		or self:addPlayer({
-			name = config.name,
-			userId = config.userId,
-			createCharacter = config.createCharacter,
-		})
-
-	local sharedPlayers = self:getService("Players")
-	local playersProxy = createPlayersProxy(sharedPlayers, player)
-	local gameProxy = {
-		GetService = function(_, serviceName: string)
-			if serviceName == "Players" then
-				return playersProxy
-			end
-
-			if not self:_isServiceEnabled(serviceName) then
-				return nil
-			end
-
-			return self:getService(serviceName)
-		end,
-	}
-
-	local globals = {}
-
-	for key, value in pairs(self.globals) do
-		globals[key] = value
-	end
-
-	globals.game = gameProxy
-	globals.LocalPlayer = player
-	globals.Players = playersProxy
-
-	local client = {
-		LocalPlayer = player,
-		game = gameProxy,
-		globals = globals,
-		bindRemote = function(_, remote)
-			return self:_bindRemoteForPlayer(remote, player)
-		end,
-	}
-
-	table.insert(self._clients, client)
-
-	return client
 end
 
 function Environment:overrideService(serviceName: string, override)

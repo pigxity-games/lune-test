@@ -103,7 +103,7 @@ assert(players:GetPlayerByUserId(42) == player)
 assert(player.Character ~= nil)
 ```
 
-Player helpers on the environment include `addPlayer`, `assignLocalPlayer`, `getPlayers`, `removePlayer`, `replaceCharacter`, and `spawnClient`.
+Player helpers on the environment include `addPlayer`, `assignLocalPlayer`, `getPlayers`, `removePlayer`, and `replaceCharacter`.
 
 ## CollectionService
 

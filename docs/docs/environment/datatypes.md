@@ -107,7 +107,9 @@ assert(changed == 10)
 Signals support:
 
 - `Connect(listener)`
+- `ConnectPlayer(player, listener)`
 - `Fire(...)`
+- `FireForPlayer(player, ...)`
 - `DisconnectAll()`
 - `GetConnectionCount()`
 - `GetDebugName()`
@@ -129,6 +131,8 @@ signal:Fire()
 
 assert(count == 1)
 ```
+
+`ConnectPlayer` and `FireForPlayer` let a signal deliver callbacks to one specific fake player. This is a fake-runtime testing helper used by client-targeted remote events.
 
 ## Vector2 and Vector3
 
