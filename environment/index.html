@@ -635,10 +635,10 @@
 
 <h1 id="environment-api">Environment API</h1>
 <p>An environment represents the state of the fake Roblox runtime. Every test suite and script automatically runs in its own environment, which is what allows access to globals such as <code>game</code>.</p>
-<p>The runner exposes two custom globals: <code>getEnvironment</code>, which could be used to obtain the current environment, and <code>createEnvironment</code>, which creates an entirely seperate environment.</p>
+<p>The runner exposes two custom globals: <code>getEnvironment</code>, which can be used to obtain the current environment, and <code>createEnvironment</code>, which creates an entirely separate environment.</p>
 <p>An environment object has the following fields:</p>
 <ul>
-<li><code>globals</code>: a list of globals which would be injected into <code>getfenv</code> on environment install. This includes Roblox defaults such as <code>game</code> and <code>workspace</code>, but not luau-native globals, such as <code>require</code>.</li>
+<li><code>globals</code>: a list of globals that would be injected into <code>getfenv</code> on environment install. This includes Roblox defaults such as <code>game</code> and <code>workspace</code>, but not Luau-native globals such as <code>require</code>.</li>
 <li><code>game</code>: the fake <code>DataModel</code>.</li>
 <li><code>Instance</code>: the environment-bound <code>Instance</code> factory.</li>
 <li><code>task</code>: the environment-bound task library.</li>
@@ -651,12 +651,12 @@
 <span class="nb">assert</span><span class="p">(</span><span class="nv">part</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">env</span><span class="p">.</span><span class="py">game</span><span class="p">:</span><span class="nf">GetService</span><span class="p">(</span><span class="s2">&quot;Workspace&quot;</span><span class="p">).</span><span class="nv">Part</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="configuring">Configuring</h2>
-<p>The best way to modify an environment's settings is to configure it. This method accepts a table, which merges data with current settings. If the environment is active, config is also automatically applied.</p>
+<p>The best way to modify an environment's settings is to configure it. This method accepts a table, which merges data with the current settings. If the environment is active, the config is also applied automatically.</p>
 <p><code>createEnvironment</code> and <code>configure</code> allow specifying a config table. The table has the following options:</p>
 <ul>
 <li><code>availableServices</code>: a set of service names accessible through <code>game:GetService("...")</code>. By default, all built-in services are set to <code>true</code>. All keys in <code>serviceOverrides</code> are also implicitly <code>true</code>.</li>
 <li><code>serviceOverrides</code>: allows specifying overrides to specific service methods/fields without mutating the entire service table. Adding a new entry adds a new custom service.</li>
-<li><code>datamodel</code>: a table which allows specifying custom fields for the datamodel, like <code>game.myField</code>.</li>
+<li><code>datamodel</code>: a table that allows specifying custom fields for the data model, like <code>game.myField</code>.</li>
 <li><code>globals</code>: allows specifying custom globals for the environment without overriding default globals.</li>
 </ul>
 <p>You may obtain the current configuration from the <code>.config</code> property, but that table is frozen and can only be modified via <code>:configure</code>.</p>
@@ -718,7 +718,7 @@
 <ul>
 <li><code>Environment.new(config)</code>: creates an environment. In tests, prefer the global <code>createEnvironment(config)</code>.</li>
 <li><code>Environment.getActiveEnvironment()</code>: returns the active environment. In tests, prefer the global <code>getEnvironment()</code>.</li>
-<li><code>env:getService(name)</code>: returns a fake service or errors if the service is unavailable.</li>
+<li><code>env:getService(name)</code>: returns a fake service or <code>nil</code> if the service is unavailable.</li>
 <li><code>env:addPlayer(config)</code>: creates a fake <code>Player</code>, parents it to <code>Players</code>, and fires lifecycle signals unless <code>runHooks = false</code>.</li>
 <li><code>env:assignLocalPlayer(player)</code>: sets <code>Players.LocalPlayer</code> and the <code>LocalPlayer</code> global.</li>
 <li><code>env:getPlayers()</code>: returns a copy of the active players array.</li>

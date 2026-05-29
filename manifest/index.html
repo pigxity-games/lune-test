@@ -729,7 +729,7 @@
 
 
 <h1 id="manifest-format">Manifest Format</h1>
-<p>Manifests are Luau modules that return a table. A manifest describes the location of tests and mounting of services.</p>
+<p>Manifests are Luau modules that return a table. A manifest describes the location of tests and how services are mounted.</p>
 <p>Basic example:</p>
 <div class="highlight"><pre><span></span><code><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">tests</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -827,7 +827,7 @@
 <span class="w">    </span><span class="p">},</span>
 <span class="p">}</span>
 </code></pre></div>
-<p><code>_root</code> mounts a folder at the current service path. Other keys continue it.</p>
+<p><code>_root</code> mounts a folder at the current service path. Other keys continue the path.</p>
 <p><code>PlayerScripts</code> mounts under <code>Players.LocalPlayer.PlayerScripts</code> and <code>StarterPlayer.StarterPlayerScripts</code>, allowing client-style requires to work from either location.</p>
 <h2 id="rojo-projects">Rojo projects</h2>
 <p>Use <code>rojoProject</code> to derive mounts from a Rojo project file.</p>
@@ -858,7 +858,7 @@
 </code></pre></div>
 <p>Discovered files with <code>.lua</code> or <code>.luau</code> extensions become suites. Functions inside those modules become cases.</p>
 <h2 id="workspaces">Workspaces</h2>
-<p><code>workspaces</code> allows for creation of multiple mount layouts.</p>
+<p><code>workspaces</code> allows the creation of multiple mount layouts.</p>
 <div class="highlight"><pre><span></span><code><span class="kr">return</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nv">workspaces</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">hub</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>

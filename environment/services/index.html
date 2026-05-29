@@ -745,7 +745,7 @@
 
 
 <h1 id="services">Services</h1>
-<p>Fake services are created through <code>game:GetService("...")</code>. The same service object is returned each time within an environment.</p>
+<p>Fake services are created through <code>game:GetService("...")</code>. The same service object is returned each time within a given environment.</p>
 <div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">replicatedStorage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">game</span><span class="p">:</span><span class="nf">GetService</span><span class="p">(</span><span class="s2">&quot;ReplicatedStorage&quot;</span><span class="p">)</span>
 <span class="nb">assert</span><span class="p">(</span><span class="nv">replicatedStorage</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="nv">game</span><span class="p">:</span><span class="nf">GetService</span><span class="p">(</span><span class="s2">&quot;ReplicatedStorage&quot;</span><span class="p">))</span>
 </code></pre></div>
@@ -760,11 +760,11 @@
 <li><code>StarterPlayer</code></li>
 <li><code>Workspace</code></li>
 </ul>
-<p>Use <code>availableServices</code> when creating an environment to limit or extend the service list.</p>
+<p>Use <code>availableServices</code> when creating an environment to limit or extend the service list. It must be a map of <code>serviceName = true/false</code> entries.</p>
 <div class="highlight"><pre><span></span><code><span class="kd">local</span><span class="w"> </span><span class="nv">env</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">createEnvironment</span><span class="p">({</span>
 <span class="w">    </span><span class="nv">availableServices</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="s2">&quot;ReplicatedStorage&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="s2">&quot;MyCustomService&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">ReplicatedStorage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">        </span><span class="nv">MyCustomService</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="nv">serviceOverrides</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nv">MyCustomService</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
