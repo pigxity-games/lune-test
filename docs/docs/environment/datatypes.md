@@ -41,7 +41,6 @@ The fake class table supports:
 - `RunService`
 - `CollectionService`
 - `MemoryStoreService`
-- `TeleportService`
 - `ReplicatedStorage`
 - `ServerScriptService`
 - `StarterPlayer`
@@ -49,7 +48,6 @@ The fake class table supports:
 - `PlayerScripts`
 - `ModuleScript`
 - `LocalScript`
-- `TeleportOptions`
 
 Service classes and other non-creatable classes are created by the environment, not through `Instance.new`.
 

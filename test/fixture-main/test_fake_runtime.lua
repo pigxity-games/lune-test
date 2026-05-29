@@ -55,14 +55,13 @@ function m.servicesAreStableAndConfigurable()
 	local players = env.game:GetService("Players")
 	local workspaceService = env.game:GetService("Workspace")
 	local memoryStoreService = env.game:GetService("MemoryStoreService")
-	local teleportService = env.game:GetService("TeleportService")
 
 	assertEqual(runService, env.game:GetService("RunService"))
 	assertEqual(collectionService, env.globals.CollectionService)
 	assertEqual(players, env.globals.Players)
 	assertEqual(workspaceService, env.globals.Workspace)
 	assertEqual(memoryStoreService, env.globals.MemoryStoreService)
-	assertEqual(teleportService, env.globals.TeleportService)
+	assertEqual(env.game:GetService("TeleportService"), nil)
 	assertEqual(env.globals.workspace, env.globals.Workspace)
 	assert(not runService:IsStudio())
 	assert(runService:IsServer())
@@ -202,7 +201,9 @@ function m.instanceHierarchyAttributesAndSignals()
 end
 
 function m.signalDisconnectPreventsFurtherFires()
-	local signal = Signal.new("StandaloneSignal")
+	assertEqual(Signal, nil)
+
+	local signal = RBXScriptSignal.new("StandaloneSignal")
 	local fired = 0
 	local connection = signal:Connect(function()
 		fired += 1
@@ -217,7 +218,7 @@ function m.signalDisconnectPreventsFurtherFires()
 end
 
 function m.signalDisconnectAllAndDisconnectDuringFire()
-	local signal = Signal.new("ComplexSignal")
+	local signal = RBXScriptSignal.new("ComplexSignal")
 	local order = {}
 	local secondConnection
 
@@ -812,7 +813,6 @@ function m.memoryStoreTeleportDiagnosticsAndResetWork()
 		},
 	})
 	local memoryStoreService = env.game:GetService("MemoryStoreService")
-	local teleportService = env.game:GetService("TeleportService")
 	local map = memoryStoreService:GetSortedMap("Scores")
 	local queue = memoryStoreService:GetQueue("Jobs")
 
@@ -832,25 +832,12 @@ function m.memoryStoreTeleportDiagnosticsAndResetWork()
 	env.scheduler:advance(1)
 	assert(map:GetAsync("coins") == nil)
 
-	local reservedServerAccessCode, reservedServerId = teleportService:ReserveServerAsync(1234)
-	assertEqual(type(reservedServerAccessCode), "string")
-	assertEqual(type(reservedServerId), "string")
-
-	local teleportOptions = env.Instance.new("TeleportOptions")
-	teleportOptions.ReservedServerAccessCode = reservedServerAccessCode
-	teleportOptions:SetTeleportData({
-		round = 2,
-	})
-	assertEqual(teleportOptions:GetTeleportData().round, 2)
-
-	teleportService:TeleportAsync(1234, { env.globals.Players.LocalPlayer }, teleportOptions)
-
 	assertEqual(env.game.PrivateServerId, "ps-55")
 	assertEqual(env.game.PrivateServerOwnerId, 55)
-	assertEqual(teleportService:GetLocalPlayerTeleportData().round, 2)
+	assertEqual(env.game:GetService("TeleportService"), nil)
 	assert(env:inspectTree():find("ReplicatedStorage") ~= nil)
 	assert(#env:inspectSignals() > 0)
-	assert(#env:inspectRemoteTraffic() > 0)
+	assertEqual(#env:inspectRemoteTraffic(), 0)
 
 	env:reset({
 		activePlayers = {},
@@ -990,8 +977,12 @@ end
 function m.environmentAvailabilityOverridesAndErrorsAreActionable()
 	local env = createEnvironment({
 		availableServices = {
-			"RunService",
-			"Workspace",
+			CollectionService = false,
+			MemoryStoreService = false,
+			Players = false,
+			ReplicatedStorage = false,
+			ServerScriptService = false,
+			StarterPlayer = false,
 		},
 		availableInstanceTypes = {
 			"DataModel",
@@ -1017,11 +1008,8 @@ function m.environmentAvailabilityOverridesAndErrorsAreActionable()
 	})
 	assertEqual(env.game:GetService("Workspace").CustomMarker, "override")
 
-	local missingServiceOk, missingServiceError = pcall(function()
-		env.game:GetService("Players")
-	end)
-	assert(not missingServiceOk)
-	assert(missingServiceError:find("Available services") ~= nil)
+	assertEqual(env.game:GetService("Players"), nil)
+	assertEqual(game:GetService("Players"), nil)
 
 	local missingTypeOk, missingTypeError = pcall(function()
 		env.Instance.new("RemoteEvent")
@@ -1369,7 +1357,9 @@ end
 function m.baseEnvironmentInstallReloadsGlobals()
 	local env = getEnvironment()
 
-	env.globals.myGlobal == "Hello"
+	env.globals.myGlobal = "Hello"
+
+	assert(env.globals.myGlobal == "Hello")
 	assert(myGlobal == nil)
 
 	env:install()
@@ -1377,8 +1367,8 @@ function m.baseEnvironmentInstallReloadsGlobals()
 
 	local env2 = createEnvironment({
 		globals = {
-			myGlobal = "Test"
-		}
+			myGlobal = "Test",
+		},
 	})
 
 	env2:install()
@@ -1395,18 +1385,21 @@ function m.envConfigureGetEnvironment()
 
 	env:configure({
 		availableServices = {
-			RunService = false
+			RunService = false,
 		},
 		serviceOverrides = {
 			MyCustomService = {
 				increment = function()
 					counter += 1
-				end
+				end,
 			},
 		},
+		datamodel = {
+			myField = "TestValue",
+		},
 		globals = {
-			myGlobal = "Test"
-		}
+			myGlobal = "Test",
+		},
 	})
 
 	assert(game:GetService("ReplicatedStorage") ~= nil) --other services are still available
@@ -1416,32 +1409,49 @@ function m.envConfigureGetEnvironment()
 	assert(counter == 1)
 
 	assert(myGlobal == "Test")
+	assertEqual(game.myField, "TestValue")
 
 	local config = {
 		globals = {
-			myGlobal = "Something else"
+			myGlobal = "Something else",
 		},
 	}
 
 	local env2 = createEnvironment(config)
 	assert(env2.config.globals.myGlobal == "Something else")
 	assert(env2.config.availableServices.RunService == true)
+	assert(table.isfrozen(env2.config))
 
 	assert(myGlobal == "Test")
 end
 
-function m.environmentTablesFrozen()
-	local env = createEnvironment()
-	
-	assert(table.isfrozen(env))
-	assert(table.isfrozen(env.game))
-	assert(table.isfrozen(env.config))
-	assert(table.isfrozen(env.config))
+function m.teleportServiceIsRemovedEntirely()
+	local env = createEnvironment({
+		activePlayers = {},
+	})
 
-	assert(not table.isfrozen(env.globals))
-	assert(not table.isfrozen(env.globals.workspace))
-	assert(not table.isfrozen(env.game:GetService("ReplicatedStorage")))
-	assert(not table.isfrozen(env.game:GetService("RunService"))) --for manual mocking
+	assertEqual(env.game:GetService("TeleportService"), nil)
+	assertEqual(env:getService("TeleportService"), nil)
+	assertError(function()
+		env.Instance.new("TeleportOptions")
+	end, 'Unsupported fake instance type "TeleportOptions"')
+end
+
+function m.rbxScriptSignalUsesNewGlobalNames()
+	assertEqual(type(RBXScriptSignal), "table")
+	assertEqual(type(RBXScriptConnection), "table")
+	assertEqual(Signal, nil)
+end
+
+function m.availableServicesRejectsLegacyArrayFormat()
+	assertError(function()
+		createEnvironment({
+			activePlayers = {},
+			availableServices = {
+				"RunService",
+			},
+		})
+	end, "availableServices must be a set of serviceName = true/false entries")
 end
 
 return m

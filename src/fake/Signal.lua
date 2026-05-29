@@ -1,10 +1,10 @@
-local Signal = {}
-Signal.__index = Signal
+local RBXScriptSignal = {}
+RBXScriptSignal.__index = RBXScriptSignal
 
-local Connection = {}
-Connection.__index = Connection
+local RBXScriptConnection = {}
+RBXScriptConnection.__index = RBXScriptConnection
 
-function Connection:Disconnect()
+function RBXScriptConnection:Disconnect()
 	if not self.Connected then
 		return
 	end
@@ -13,12 +13,12 @@ function Connection:Disconnect()
 	self._signal:_disconnect(self)
 end
 
-function Signal.new(name: string?, registry)
+function RBXScriptSignal.new(name: string?, registry)
 	local self = setmetatable({
-		_name = name or "Signal",
+		_name = name or "RBXScriptSignal",
 		_connections = {},
 		_registry = registry,
-	}, Signal)
+	}, RBXScriptSignal)
 
 	if registry ~= nil then
 		registry[self] = true
@@ -27,7 +27,7 @@ function Signal.new(name: string?, registry)
 	return self
 end
 
-function Signal:_disconnect(connection)
+function RBXScriptSignal:_disconnect(connection)
 	for index, candidate in ipairs(self._connections) do
 		if candidate == connection then
 			table.remove(self._connections, index)
@@ -36,21 +36,21 @@ function Signal:_disconnect(connection)
 	end
 end
 
-function Signal:Connect(listener)
-	assert(type(listener) == "function", "Signal:Connect expects a function")
+function RBXScriptSignal:Connect(listener)
+	assert(type(listener) == "function", "RBXScriptSignal:Connect expects a function")
 
 	local connection = setmetatable({
 		Connected = true,
 		_listener = listener,
 		_signal = self,
-	}, Connection)
+	}, RBXScriptConnection)
 
 	table.insert(self._connections, connection)
 
 	return connection
 end
 
-function Signal:Fire(...)
+function RBXScriptSignal:Fire(...)
 	local snapshot = table.clone(self._connections)
 
 	for _, connection in ipairs(snapshot) do
@@ -60,7 +60,7 @@ function Signal:Fire(...)
 	end
 end
 
-function Signal:DisconnectAll()
+function RBXScriptSignal:DisconnectAll()
 	local snapshot = table.clone(self._connections)
 
 	for _, connection in ipairs(snapshot) do
@@ -68,12 +68,14 @@ function Signal:DisconnectAll()
 	end
 end
 
-function Signal:GetConnectionCount()
+function RBXScriptSignal:GetConnectionCount()
 	return #self._connections
 end
 
-function Signal:GetDebugName()
+function RBXScriptSignal:GetDebugName()
 	return self._name
 end
 
-return Signal
+RBXScriptSignal.RBXScriptConnection = RBXScriptConnection
+
+return RBXScriptSignal

@@ -18,6 +18,17 @@ local activeEnvironment = nil
 local activeInstallController = nil
 
 local defaultAvailableServices = {
+	CollectionService = true,
+	MemoryStoreService = true,
+	Players = true,
+	ReplicatedStorage = true,
+	RunService = true,
+	ServerScriptService = true,
+	StarterPlayer = true,
+	Workspace = true,
+}
+
+local builtInServiceNames = {
 	"CollectionService",
 	"MemoryStoreService",
 	"Players",
@@ -25,7 +36,6 @@ local defaultAvailableServices = {
 	"RunService",
 	"ServerScriptService",
 	"StarterPlayer",
-	"TeleportService",
 	"Workspace",
 }
 
@@ -68,11 +78,82 @@ local function normalizeSet(values, fallback)
 	return set
 end
 
+local function cloneNestedTable(input)
+	if type(input) ~= "table" or input._isFakeRobloxInstance then
+		return input
+	end
+
+	local copy = {}
+
+	for key, value in pairs(input) do
+		copy[key] = cloneNestedTable(value)
+	end
+
+	return copy
+end
+
+local function freezeTableDeep(input)
+	if table.freeze == nil or type(input) ~= "table" or table.isfrozen(input) then
+		return input
+	end
+
+	for _, value in pairs(input) do
+		if type(value) == "table" and not value._isFakeRobloxInstance then
+			freezeTableDeep(value)
+		end
+	end
+
+	table.freeze(input)
+	return input
+end
+
+local function cloneAvailableServices(availableServices, serviceOverrides)
+	local merged = {}
+
+	for serviceName, enabled in pairs(defaultAvailableServices) do
+		merged[serviceName] = enabled
+	end
+
+	for serviceName, enabled in pairs(availableServices or {}) do
+		assert(
+			type(serviceName) == "string" and type(enabled) == "boolean",
+			'availableServices must be a set of serviceName = true/false entries'
+		)
+		merged[serviceName] = enabled == true
+	end
+
+	for serviceName in pairs(serviceOverrides or {}) do
+		merged[serviceName] = true
+	end
+
+	return merged
+end
+
+local function clonePublicConfig(config)
+	return {
+		availableServices = cloneAvailableServices(config.availableServices, config.serviceOverrides),
+		serviceOverrides = cloneNestedTable(config.serviceOverrides),
+		datamodel = cloneNestedTable(config.datamodel),
+		globals = cloneNestedTable(config.globals),
+		isStudio = config.isStudio,
+		isServer = config.isServer,
+		isClient = config.isClient,
+		privateServerId = config.privateServerId,
+		privateServerOwnerId = config.privateServerOwnerId,
+	}
+end
+
+local function rebuildFrozenPublicConfig(config)
+	return freezeTableDeep(clonePublicConfig(config))
+end
+
 local function listSet(set)
 	local values = {}
 
-	for value in pairs(set) do
-		table.insert(values, value)
+	for value, enabled in pairs(set) do
+		if enabled then
+			table.insert(values, value)
+		end
 	end
 
 	table.sort(values)
@@ -151,17 +232,26 @@ function Environment.new(config)
 	config = config or {}
 
 	local self = setmetatable({
-		_initialConfig = shallowClone(config),
+		_initialConfig = cloneNestedTable(config),
+		_configState = {
+			availableServices = cloneAvailableServices(config.availableServices, config.serviceOverrides),
+			serviceOverrides = cloneNestedTable(config.serviceOverrides) or {},
+			datamodel = cloneNestedTable(config.datamodel) or {},
+			globals = cloneNestedTable(config.globals) or {},
+			isStudio = if config.isStudio ~= nil then config.isStudio else true,
+			isServer = if config.isServer ~= nil then config.isServer else true,
+			isClient = if config.isClient ~= nil then config.isClient else true,
+			privateServerId = config.privateServerId or "",
+			privateServerOwnerId = config.privateServerOwnerId or 0,
+		},
 		_flags = {
 			isStudio = if config.isStudio ~= nil then config.isStudio else true,
 			isServer = if config.isServer ~= nil then config.isServer else true,
 			isClient = if config.isClient ~= nil then config.isClient else true,
 			privateServerId = config.privateServerId or "",
 			privateServerOwnerId = config.privateServerOwnerId or 0,
-			reservedServerAccessCode = config.reservedServerAccessCode or "",
-			teleportData = config.teleportData,
 		},
-		_availableServices = normalizeSet(config.availableServices, defaultAvailableServices),
+		_availableServices = cloneAvailableServices(config.availableServices, config.serviceOverrides),
 		_availableInstanceTypes = normalizeSet(config.availableInstanceTypes, ClassData.list()),
 		_signalRegistry = {},
 		_services = {},
@@ -175,8 +265,7 @@ function Environment.new(config)
 		_memoryStoreMaps = {},
 		_memoryStoreQueues = {},
 		_persistenceAdapters = shallowClone(config.persistenceAdapters),
-		_serviceOverrides = shallowClone(config.serviceOverrides),
-		_reservedServerCounter = 0,
+		_serviceOverrides = cloneNestedTable(config.serviceOverrides) or {},
 		_customGlobals = {},
 		_installController = activeInstallController,
 		_isBaseEnvironment = false,
@@ -213,14 +302,20 @@ function Environment.new(config)
 	self.game = self:_newInstance("DataModel", nil, true)
 	self.game.Name = "game"
 	self.game.GetService = function(_, serviceName: string)
+		if not self:_isServiceEnabled(serviceName) then
+			return nil
+		end
+
 		return self:getService(serviceName)
 	end
 	self.game.FindService = function(_, serviceName: string)
 		return self._services[serviceName]
 	end
 	self:_syncDataModelProperties()
+	self:_applyConfiguredDataModelProperties()
+	self.config = rebuildFrozenPublicConfig(self._configState)
 
-	for _, serviceName in ipairs(defaultAvailableServices) do
+	for _, serviceName in ipairs(builtInServiceNames) do
 		if self._availableServices[serviceName] then
 			self:getService(serviceName)
 		end
@@ -267,10 +362,23 @@ function Environment.setActiveInstallController(controller)
 	activeInstallController = controller
 end
 
+function Environment:_isServiceEnabled(serviceName: string): boolean
+	return self._availableServices[serviceName] == true or self._serviceOverrides[serviceName] ~= nil
+end
+
 function Environment:_syncDataModelProperties()
 	self.game.PrivateServerId = self._flags.privateServerId
 	self.game.PrivateServerOwnerId = self._flags.privateServerOwnerId
-	self.game.ReservedServerAccessCode = self._flags.reservedServerAccessCode
+end
+
+function Environment:_applyConfiguredDataModelProperties()
+	for key, value in pairs(self._configState.datamodel) do
+		self.game[key] = value
+	end
+end
+
+function Environment:_updatePublicConfig()
+	self.config = rebuildFrozenPublicConfig(self._configState)
 end
 
 function Environment:_isInDataModel(instance): boolean
@@ -389,15 +497,6 @@ function Environment:_configureInstance(instance)
 		end
 		table.insert(self._remoteInstances, instance)
 		return
-	end
-
-	if instance:IsA("TeleportOptions") then
-		instance.SetTeleportData = function(options, teleportData)
-			options.TeleportData = teleportData
-		end
-		instance.GetTeleportData = function(options)
-			return options.TeleportData
-		end
 	end
 end
 
@@ -919,68 +1018,17 @@ function Environment:_createMemoryStoreService()
 	return service
 end
 
-function Environment:_createTeleportService()
-	local service = self:_newInstance("TeleportService", self.game, true)
-	service.Name = "TeleportService"
-	service.PrivateServerId = self._flags.privateServerId
-	service.PrivateServerOwnerId = self._flags.privateServerOwnerId
-	service.ReservedServerAccessCode = self._flags.reservedServerAccessCode
-	service.TeleportAsync = function(_, placeId: number, players, options)
-		local teleportData = nil
-
-		if options ~= nil then
-			if type(options.GetTeleportData) == "function" then
-				teleportData = options:GetTeleportData()
-			else
-				teleportData = options.TeleportData
-			end
-		end
-
-		local request = {
-			placeId = placeId,
-			players = cloneArray(players or {}),
-			options = options or {},
-		}
-
-		table.insert(self._remoteTraffic, {
-			kind = "TeleportAsync",
-			placeId = placeId,
-			playerName = if request.players[1] ~= nil then request.players[1].Name else nil,
-			args = { options },
-		})
-
-		if teleportData ~= nil then
-			for _, player in ipairs(request.players) do
-				player._teleportData = teleportData
-			end
-		end
-
-		return request
-	end
-	service.ReserveServerAsync = function(_, placeId: number)
-		self._reservedServerCounter += 1
-		local accessCode = `reserved-{placeId}-{self._reservedServerCounter}`
-		local serverId = `private-{placeId}-{self._reservedServerCounter}`
-		self._flags.reservedServerAccessCode = accessCode
-		service.ReservedServerAccessCode = accessCode
-		self:_syncDataModelProperties()
-		return accessCode, serverId
-	end
-	service.ReserveServer = service.ReserveServerAsync
-	service.GetLocalPlayerTeleportData = function()
-		if self._localPlayer ~= nil and self._localPlayer._teleportData ~= nil then
-			return self._localPlayer._teleportData
-		end
-
-		return self._flags.teleportData
-	end
-	return service
-end
-
 function Environment:_createGenericService(serviceName: string)
-	local service = self:_newInstance(serviceName, self.game, true)
-	service.Name = serviceName
-	return service
+	if ClassData.isSupported(serviceName) then
+		local service = self:_newInstance(serviceName, self.game, true)
+		service.Name = serviceName
+		return service
+	end
+
+	return {
+		Name = serviceName,
+		ClassName = serviceName,
+	}
 end
 
 function Environment:_instantiateService(serviceName: string)
@@ -998,10 +1046,6 @@ function Environment:_instantiateService(serviceName: string)
 
 	if serviceName == "MemoryStoreService" then
 		return self:_createMemoryStoreService()
-	end
-
-	if serviceName == "TeleportService" then
-		return self:_createTeleportService()
 	end
 
 	return self:_createGenericService(serviceName)
@@ -1029,15 +1073,12 @@ end
 function Environment:getService(serviceName: string)
 	local service = self._services[serviceName]
 
-	if service ~= nil then
-		return service
+	if not self:_isServiceEnabled(serviceName) then
+		return nil
 	end
 
-	if not self._availableServices[serviceName] then
-		error(
-			`Unknown fake service "{serviceName}". Available services: {joinValues(listSet(self._availableServices))}`,
-			2
-		)
+	if service ~= nil then
+		return service
 	end
 
 	service = self:_instantiateService(serviceName)
@@ -1064,15 +1105,23 @@ function Environment:_refreshGlobals()
 	}
 
 	for serviceName in pairs(self._services) do
-		globals[serviceName] = self:getService(serviceName)
+		if self:_isServiceEnabled(serviceName) then
+			globals[serviceName] = self:getService(serviceName)
+		end
 	end
 
 	if self._localPlayer ~= nil then
 		globals.LocalPlayer = self._localPlayer
 	end
 
-	if self._services.Workspace ~= nil then
+	if self._services.Workspace ~= nil and self:_isServiceEnabled("Workspace") then
 		globals.workspace = self._services.Workspace
+	end
+
+	for key, value in pairs(self._configState.globals) do
+		if globals[key] == nil then
+			globals[key] = value
+		end
 	end
 
 	self.globals = globals
@@ -1242,6 +1291,10 @@ function Environment:spawnClient(config)
 				return playersProxy
 			end
 
+			if not self:_isServiceEnabled(serviceName) then
+				return nil
+			end
+
 			return self:getService(serviceName)
 		end,
 	}
@@ -1272,29 +1325,78 @@ end
 
 function Environment:overrideService(serviceName: string, override)
 	self._serviceOverrides[serviceName] = override
+	self._configState.serviceOverrides[serviceName] = cloneNestedTable(override)
+	self._availableServices[serviceName] = true
+	self._configState.availableServices[serviceName] = true
 
 	if self._services[serviceName] ~= nil then
 		self._services[serviceName] = self:_applyServiceOverride(serviceName, self._services[serviceName])
 	end
 
+	self:_updatePublicConfig()
 	self:_refreshGlobals()
+
+	if activeEnvironment == self and self._installController ~= nil and self._installController.refreshActive ~= nil then
+		self._installController:refreshActive()
+	end
 end
 
 function Environment:configure(config)
-	for key, value in pairs(config or {}) do
+	config = config or {}
+
+	for key, value in pairs(config) do
 		if self._flags[key] ~= nil then
 			self._flags[key] = value
+			self._configState[key] = value
+		end
+	end
+
+	if config.availableServices ~= nil then
+		for serviceName, enabled in pairs(config.availableServices) do
+			assert(
+				type(serviceName) == "string" and type(enabled) == "boolean",
+				'availableServices must be a set of serviceName = true/false entries'
+			)
+			self._availableServices[serviceName] = enabled == true
+			self._configState.availableServices[serviceName] = enabled == true
+		end
+	end
+
+	if config.serviceOverrides ~= nil then
+		for serviceName, override in pairs(config.serviceOverrides) do
+			self._serviceOverrides[serviceName] = cloneNestedTable(override)
+			self._configState.serviceOverrides[serviceName] = cloneNestedTable(override)
+			self._availableServices[serviceName] = true
+			self._configState.availableServices[serviceName] = true
+		end
+	end
+
+	if config.datamodel ~= nil then
+		for key, value in pairs(config.datamodel) do
+			self._configState.datamodel[key] = value
+			self.game[key] = value
+		end
+	end
+
+	if config.globals ~= nil then
+		for key, value in pairs(config.globals) do
+			self._configState.globals[key] = value
 		end
 	end
 
 	self:_syncDataModelProperties()
+	self:_updatePublicConfig()
 
-	local teleportService = self._services.TeleportService
+	for serviceName, service in pairs(self._services) do
+		if self:_isServiceEnabled(serviceName) then
+			self._services[serviceName] = self:_applyServiceOverride(serviceName, service)
+		end
+	end
 
-	if teleportService ~= nil then
-		teleportService.PrivateServerId = self._flags.privateServerId
-		teleportService.PrivateServerOwnerId = self._flags.privateServerOwnerId
-		teleportService.ReservedServerAccessCode = self._flags.reservedServerAccessCode
+	self:_refreshGlobals()
+
+	if activeEnvironment == self and self._installController ~= nil and self._installController.refreshActive ~= nil then
+		self._installController:refreshActive()
 	end
 end
 
@@ -1302,7 +1404,22 @@ function Environment:reset(config)
 	local controller = self._installController
 	local isBaseEnvironment = self._isBaseEnvironment
 	local customGlobals = self._customGlobals
-	local replacement = Environment.new(config or self._initialConfig)
+	local nextConfig = config
+
+	if nextConfig == nil then
+		nextConfig = cloneNestedTable(self._initialConfig)
+		nextConfig.availableServices = cloneNestedTable(self._configState.availableServices)
+		nextConfig.serviceOverrides = cloneNestedTable(self._configState.serviceOverrides)
+		nextConfig.datamodel = cloneNestedTable(self._configState.datamodel)
+		nextConfig.globals = cloneNestedTable(self._configState.globals)
+		nextConfig.isStudio = self._configState.isStudio
+		nextConfig.isServer = self._configState.isServer
+		nextConfig.isClient = self._configState.isClient
+		nextConfig.privateServerId = self._configState.privateServerId
+		nextConfig.privateServerOwnerId = self._configState.privateServerOwnerId
+	end
+
+	local replacement = Environment.new(nextConfig)
 
 	for key in pairs(self) do
 		self[key] = nil

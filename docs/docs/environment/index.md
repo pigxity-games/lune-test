@@ -61,7 +61,7 @@ assert(counter == 1)
 assert(myGlobal == "Test")
 ``` 
 
-`configure` currently updates runtime flags such as `isStudio`, `isServer`, `isClient`, private server fields, and teleport data. Use `createEnvironment` or `:reset(config)` when changing service availability, instance availability, initial players, or service overrides.
+`configure` merges environment config into the active environment and refreshes globals, data model fields, service availability, and service overrides immediately.
 
 ## Installing an Environment
 Creating a new environment or modifying the global table directly does not sync globals with the environment state. To set an environment as active, run the `:install()` method. This sets global values under `globals` as actual globals in the sandbox.
@@ -69,11 +69,12 @@ Creating a new environment or modifying the global table directly does not sync 
 ```lua
 local env = getEnvironment()
 
-env.globals.myGlobal == "Hello"
+env.globals.myGlobal = "Hello"
+
+assert(env.globals.myGlobal == "Hello")
 assert(myGlobal == nil)
 
 env:install()
-
 assert(myGlobal == "Hello")
 
 local env2 = createEnvironment({
@@ -81,6 +82,7 @@ local env2 = createEnvironment({
         myGlobal = "Test"
     }
 })
+
 env2:install()
 assert(myGlobal == "Test")
 
@@ -102,13 +104,13 @@ Custom global values in _G are also bound to environment state.
 - `env:replaceCharacter(player, characterConfig, runHooks)`: replaces `player.Character`.
 - `env:spawnClient(config)`: creates a client context with its own `LocalPlayer` and a helper for player-bound remotes.
 - `env:overrideService(serviceName, override)`: applies or replaces a service override.
-- `env:configure(config)`: updates runtime flags and live private server fields.
+- `env:configure(config)`: merges config into the live environment and refreshes globals, datamodel fields, and service availability.
 - `env:reset(config)`: replaces the environment state while keeping the same active environment object.
 - `env:install()` / `env:uninstall()`: swap the active environment in the current sandbox.
 - `env:inspectTree(root)`: returns a string tree of fake instances.
 - `env:inspectTasks()`: returns queued scheduler items.
 - `env:inspectSignals()`: returns signal names and connection counts.
-- `env:inspectRemoteTraffic()`: returns recorded remote and teleport calls.
+- `env:inspectRemoteTraffic()`: returns recorded remote calls.
 
 ## Related Pages
 

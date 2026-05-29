@@ -16,7 +16,6 @@ By default, these services are available:
 - `RunService`
 - `ServerScriptService`
 - `StarterPlayer`
-- `TeleportService`
 - `Workspace`
 
 Use `availableServices` when creating an environment to limit or extend the service list.
@@ -178,27 +177,3 @@ assert(queue:GetSizeAsync() == 0)
 ```
 
 The fake service also has `SetAdapter(name, adapter)` and `GetAdapter(name)` for test-owned persistence adapters.
-
-## TeleportService
-
-`TeleportService` supports:
-
-- `TeleportAsync(placeId, players, options)`
-- `ReserveServerAsync(placeId)`
-- `ReserveServer(placeId)`
-- `GetLocalPlayerTeleportData()`
-
-`TeleportOptions` instances support `SetTeleportData` and `GetTeleportData`.
-
-```lua
-local teleportService = game:GetService("TeleportService")
-local options = Instance.new("TeleportOptions")
-options:SetTeleportData({ from = "test" })
-
-local request = teleportService:TeleportAsync(123, { game:GetService("Players").LocalPlayer }, options)
-
-assert(request.placeId == 123)
-assert(teleportService:GetLocalPlayerTeleportData().from == "test")
-```
-
-Teleport calls are recorded by `env:inspectRemoteTraffic()`.

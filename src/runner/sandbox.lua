@@ -284,6 +284,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		local currentEnvironment = fake.getEnvironment()
 
 		if currentEnvironment == targetEnvironment then
+			applyEnvironmentGlobals(targetEnvironment)
 			return
 		end
 

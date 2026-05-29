@@ -2,7 +2,6 @@ local ClassData = {}
 
 local nonCreatableClasses = {
 	CollectionService = true,
-	TeleportService = true,
 	MemoryStoreService = true,
 	RunService = true,
 	DataModel = true,
@@ -32,7 +31,6 @@ local parentByClass = {
 	RunService = "Instance",
 	CollectionService = "Instance",
 	MemoryStoreService = "Instance",
-	TeleportService = "Instance",
 	ReplicatedStorage = "Instance",
 	ServerScriptService = "Instance",
 	StarterPlayer = "Instance",
@@ -40,7 +38,6 @@ local parentByClass = {
 	PlayerScripts = "Instance",
 	ModuleScript = "Instance",
 	LocalScript = "Instance",
-	TeleportOptions = "Instance",
 }
 
 local defaultPropsByClass = {
@@ -77,7 +74,6 @@ local defaultPropsByClass = {
 	RunService = {},
 	CollectionService = {},
 	MemoryStoreService = {},
-	TeleportService = {},
 	ReplicatedStorage = {},
 	ServerScriptService = {},
 	StarterPlayer = {},
@@ -85,10 +81,6 @@ local defaultPropsByClass = {
 	PlayerScripts = {},
 	ModuleScript = {},
 	LocalScript = {},
-	TeleportOptions = {
-		ReservedServerAccessCode = "",
-		TeleportData = nil,
-	},
 }
 
 function ClassData.getParent(className: string): string?

@@ -1,15 +1,27 @@
 local Environment = require("./Environment")
+local RBXScriptSignal = require("./Signal")
 
 return {
 	createEnvironment = function(config)
-		return Environment.new(config)
+		local environment = Environment.new(config)
+
+		if
+			environment._installController ~= nil
+			and config ~= nil
+			and (config.availableServices ~= nil or config.serviceOverrides ~= nil)
+		then
+			environment:install()
+		end
+
+		return environment
 	end,
 	getEnvironment = function()
 		return Environment.getActiveEnvironment()
 	end,
 	Environment = Environment,
 	Instance = require("./Instance"),
-	Signal = require("./Signal"),
+	RBXScriptSignal = RBXScriptSignal,
+	RBXScriptConnection = RBXScriptSignal.RBXScriptConnection,
 	Scheduler = require("./Scheduler"),
 	Color3 = require("./Color3"),
 	Vector2 = require("./Vector2"),
