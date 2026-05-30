@@ -1,0 +1,15 @@
+{
+  "name": "NestedPlayerScripts",
+  "tree": {
+    "$className": "DataModel",
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Common": {
+          "$path": "../../../multi-workspace/src/common/shared"
+        }
+      }
+    }
+  }
+}

@@ -240,12 +240,26 @@ local function mergeDiscoveredTests(
 	end
 end
 
+local function normalizeMountPathAlias(mountPath: string): string
+	local starterPlayerScriptsPath = "StarterPlayer/StarterPlayerScripts"
+
+	if mountPath == starterPlayerScriptsPath then
+		return "PlayerScripts"
+	end
+
+	if mountPath:sub(1, #starterPlayerScriptsPath + 1) == starterPlayerScriptsPath .. "/" then
+		return "PlayerScripts" .. mountPath:sub(#starterPlayerScriptsPath + 1)
+	end
+
+	return mountPath
+end
+
 local function insertMount(normalizedMounts, mountPath: string, moduleRoot: string, manifestFilePath: string)
 	assert(type(mountPath) == "string", "mount path must be a string")
 	assert(type(moduleRoot) == "string", `mount {mountPath} must point to a string path`)
 
 	table.insert(normalizedMounts, {
-		mountPath = paths.normalizeRequirePath(mountPath),
+		mountPath = paths.normalizeRequirePath(normalizeMountPathAlias(mountPath)),
 		moduleRoot = paths.resolveManifestResourcePath(manifestFilePath, moduleRoot),
 	})
 end
@@ -255,7 +269,7 @@ local function insertRojoMount(normalizedMounts, mountPath: string, moduleRoot: 
 	assert(type(moduleRoot) == "string", `mount {mountPath} must point to a string path`)
 
 	table.insert(normalizedMounts, {
-		mountPath = paths.normalizeRequirePath(mountPath),
+		mountPath = paths.normalizeRequirePath(normalizeMountPathAlias(mountPath)),
 		moduleRoot = paths.resolveFilesystemPathFromFile(rojoProjectPath, moduleRoot),
 	})
 end
@@ -287,14 +301,6 @@ local function flattenMountSpec(normalizedMounts, manifestFilePath: string, moun
 	end
 end
 
-local function normalizeRojoMountPath(mountPath: string): string
-	if mountPath == "StarterPlayer/StarterPlayerScripts" then
-		return "PlayerScripts"
-	end
-
-	return mountPath
-end
-
 local function flattenRojoTree(normalizedMounts, manifestFilePath: string, node, pathParts)
 	assert(type(node) == "table", "rojo project nodes must be tables")
 
@@ -303,7 +309,7 @@ local function flattenRojoTree(normalizedMounts, manifestFilePath: string, node,
 	if nodePath ~= nil and #pathParts > 0 then
 		insertRojoMount(
 			normalizedMounts,
-			normalizeRojoMountPath(table.concat(pathParts, "/")),
+			table.concat(pathParts, "/"),
 			nodePath,
 			manifestFilePath
 		)

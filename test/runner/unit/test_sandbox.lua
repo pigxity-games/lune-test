@@ -85,4 +85,49 @@ function m.scriptParentInvalidRequireProducesError()
 	end)
 end
 
+function m.nestedPlayerScriptsMountsResolveFromBothClientRoots()
+	local box = sandbox.create({
+		{
+			mountPath = "PlayerScripts/Common",
+			moduleRoot = paths.normalizeFilesystemPath("test/multi-workspace/src/common/shared"),
+		},
+	})
+
+	box.install()
+
+	local ok, err = pcall(function()
+		local players = box.game:GetService("Players")
+		local starterPlayer = box.game:GetService("StarterPlayer")
+		local localPlayerCommon = players.LocalPlayer.PlayerScripts.Common
+		local starterPlayerCommon = starterPlayer.StarterPlayerScripts.Common
+
+		assert(localPlayerCommon ~= nil)
+		assert(starterPlayerCommon ~= nil)
+		assert(localPlayerCommon.CommonModule ~= nil)
+		assert(starterPlayerCommon.CommonModule ~= nil)
+		assert(box.require(localPlayerCommon.CommonModule).divide(12, 3) == 4)
+		assert(box.require(starterPlayerCommon.CommonModule).divide(12, 3) == 4)
+	end)
+
+	box.uninstall()
+	assert(ok, err)
+end
+
+function m.fileModulesGetSyntheticScriptInstances()
+	local box = sandbox.create({})
+	box.install()
+
+	local ok, result = pcall(function()
+		local suiteModule = box.loadFileModule(
+			paths.sourceFilePathWithoutExtension("test/runner/fixtures/discovered_relative_require/test_relative_require.lua")
+		)
+
+		suiteModule.relativeRequireWorks()
+		suiteModule.selfRequireWorks()
+	end)
+
+	box.uninstall()
+	assert(ok, result)
+end
+
 return m

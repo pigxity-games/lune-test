@@ -41,6 +41,20 @@ function m.infersWorkspaceForScript()
 	assert(foundGameMount)
 end
 
+function m.normalizesNestedPlayerScriptsRojoMounts()
+	local manifest = manifestRunner.loadManifest("test/runner/fixtures/player_scripts_nested_rojo/manifest.lua")
+	local foundNestedPlayerScriptsMount = false
+
+	for _, mountData in ipairs(manifest.mounts) do
+		if mountData.mountPath == "PlayerScripts/Common" then
+			foundNestedPlayerScriptsMount = true
+			break
+		end
+	end
+
+	assert(foundNestedPlayerScriptsMount)
+end
+
 function m.discoversWorkspaceLocalTestLocations()
 	local manifest = manifestRunner.loadManifest("test/workspace-test-locations/manifest.lua")
 
@@ -62,6 +76,19 @@ function m.discoversWorkspaceLocalTestLocations()
 
 	assert(results.success)
 	assert(results.total == 2)
+end
+
+function m.discoveredSuitesSupportRelativeAndSelfRequires()
+	local manifest = manifestRunner.loadManifest("test/runner/fixtures/discovered_relative_require/manifest.lua")
+	local results = runner.runSelections({
+		{
+			kind = "manifest",
+			manifest = manifest,
+		},
+	})
+
+	assert(results.success)
+	assert(results.total == 3)
 end
 
 return m

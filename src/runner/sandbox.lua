@@ -39,6 +39,52 @@ local function startsWithPath(path: string, prefix: string): boolean
 	return path == prefix or path:sub(1, #prefix + 1) == prefix .. "/"
 end
 
+local function getSpecialMountRoot(mountPath: string)
+	for rootName, specialMount in pairs(specialMounts) do
+		if startsWithPath(mountPath, rootName) then
+			local trailingPath = mountPath:sub(#rootName + 1)
+			return specialMount, paths.splitPath(trailingPath)
+		end
+	end
+
+	return nil
+end
+
+local function getSpecialMountPathFromInstanceParts(parts)
+	for rootName, specialMount in pairs(specialMounts) do
+		for _, specialNode in ipairs(specialMount.nodes) do
+			local prefix = { specialNode.serviceName }
+
+			for _, segment in ipairs(specialNode.path) do
+				table.insert(prefix, segment)
+			end
+
+			for startIndex = 1, #parts - #prefix + 1 do
+				local matchesPrefix = true
+
+				for offset, segment in ipairs(prefix) do
+					if parts[startIndex + offset - 1] ~= segment then
+						matchesPrefix = false
+						break
+					end
+				end
+
+				if matchesPrefix then
+					local specialParts = { rootName }
+
+					for index = startIndex + #prefix, #parts do
+						table.insert(specialParts, parts[index])
+					end
+
+					return table.concat(specialParts, "/")
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
 local function warnFallback(key: string, message: string)
 	if warnedFallbacks[key] then
 		return
@@ -94,6 +140,33 @@ local function resolveLuaurcAlias(aliasName: string, remainder: string): string?
 	return nil
 end
 
+local function resolveMountedVirtualPathToFilePath(mounts, virtualPath: string): string?
+	local normalizedVirtualPath = paths.normalizeRequirePath(virtualPath)
+	local bestCandidate = nil
+	local bestMountLength = -1
+
+	for _, mount in ipairs(mounts) do
+		local mountPath = paths.normalizeRequirePath(mount.mountPath)
+
+		if startsWithPath(normalizedVirtualPath, mountPath) then
+			local trailingPath = normalizedVirtualPath:sub(#mountPath + 1)
+
+			if trailingPath:sub(1, 1) == "/" then
+				trailingPath = trailingPath:sub(2)
+			end
+
+			local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(mount.moduleRoot, trailingPath))
+
+			if paths.resolveExistingSourceFile(candidatePath) ~= nil and #mountPath > bestMountLength then
+				bestCandidate = candidatePath
+				bestMountLength = #mountPath
+			end
+		end
+	end
+
+	return bestCandidate
+end
+
 local function resolveAliasedModuleToFilePath(mounts, modulePath: string): string?
 	local aliasName, remainder = modulePath:match("^@([^/]+)(.*)$")
 
@@ -102,30 +175,7 @@ local function resolveAliasedModuleToFilePath(mounts, modulePath: string): strin
 	end
 
 	if aliasName == "game" then
-		local virtualPath = paths.normalizeRequirePath(remainder)
-		local bestCandidate = nil
-		local bestMountLength = -1
-
-		for _, mount in ipairs(mounts) do
-			local mountPath = paths.normalizeRequirePath(mount.mountPath)
-
-			if startsWithPath(virtualPath, mountPath) then
-				local trailingPath = virtualPath:sub(#mountPath + 1)
-
-				if trailingPath:sub(1, 1) == "/" then
-					trailingPath = trailingPath:sub(2)
-				end
-
-				local candidatePath = paths.normalizeFilesystemPath(paths.pathJoin(mount.moduleRoot, trailingPath))
-
-				if paths.resolveExistingSourceFile(candidatePath) ~= nil and #mountPath > bestMountLength then
-					bestCandidate = candidatePath
-					bestMountLength = #mountPath
-				end
-			end
-		end
-
-		return bestCandidate
+		return resolveMountedVirtualPathToFilePath(mounts, remainder)
 	end
 
 	local aliasedPath = resolveLuaurcAlias(aliasName, remainder)
@@ -192,6 +242,8 @@ end
 
 function sandboxModule.create(manifestMounts, runtimeConfig)
 	local fileModuleCache = {}
+	local fileModuleInstanceCache = {}
+	local fileDirectoryInstanceCache = {}
 	local mounts = {}
 	local mountByInstance = {}
 	local environment = fake.createEnvironment(runtimeConfig)
@@ -334,6 +386,11 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		return instance
 	end
 
+	local function nameFromPath(path: string): string
+		local parts = paths.splitPath(path)
+		return parts[#parts] or path
+	end
+
 	local function createChild(parent, name: string, className: string?)
 		local child = rawget(parent, "_childrenByName")[name]
 
@@ -432,7 +489,7 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	end
 
 	local function ensureSpecialMountNodes(mountPath: string)
-		local specialMount = specialMounts[mountPath]
+		local specialMount, trailingSegments = getSpecialMountRoot(mountPath)
 
 		if specialMount == nil then
 			return nil
@@ -448,6 +505,11 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 			end
 
 			node.ClassName = specialNode.className
+
+			for _, segment in ipairs(trailingSegments) do
+				node = createChild(node, segment)
+			end
+
 			table.insert(nodes, node)
 		end
 
@@ -455,15 +517,16 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 	end
 
 	local function ensureMountNode(mountPath: string)
-		local segments = paths.splitPath(mountPath)
-		assert(#segments > 0, "mount path must not be empty")
-
-		local firstSegment = table.remove(segments, 1)
 		local specialNodes = ensureSpecialMountNodes(mountPath)
 
 		if specialNodes ~= nil then
 			return specialNodes[1], specialNodes
 		end
+
+		local segments = paths.splitPath(mountPath)
+		assert(#segments > 0, "mount path must not be empty")
+
+		local firstSegment = table.remove(segments, 1)
 
 		local node = ensureService(firstSegment)
 
@@ -534,7 +597,88 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		return node
 	end
 
+	local ensureFileDirectoryInstance
+	local resolveFilesystemChild
+	local ensureFileModuleInstance
+
+	ensureFileDirectoryInstance = function(directoryPath: string)
+		directoryPath = paths.normalizeFilesystemPath(directoryPath)
+
+		local cached = fileDirectoryInstanceCache[directoryPath]
+
+		if cached ~= nil then
+			return cached
+		end
+
+		local parentDirectoryPath = paths.dirname(directoryPath)
+		local parentDirectory = nil
+
+		if parentDirectoryPath ~= directoryPath and paths.isAbsoluteFilesystemPath(parentDirectoryPath) then
+			parentDirectory = ensureFileDirectoryInstance(parentDirectoryPath)
+		end
+
+		local directoryInstance = createInstance(nameFromPath(directoryPath), "Folder", parentDirectory)
+		directoryInstance._filesystemDirectoryPath = directoryPath
+		directoryInstance._childResolver = resolveFilesystemChild
+		fileDirectoryInstanceCache[directoryPath] = directoryInstance
+
+		return directoryInstance
+	end
+
+	resolveFilesystemChild = function(parent, name: string)
+		local directoryPath = rawget(parent, "_filesystemDirectoryPath")
+
+		if directoryPath == nil then
+			return nil
+		end
+
+		local childPath = paths.normalizeFilesystemPath(paths.pathJoin(directoryPath, name))
+		local modulePath = paths.resolveExistingSourceFile(childPath)
+
+		if modulePath ~= nil then
+			return ensureFileModuleInstance(childPath)
+		end
+
+		if fs.isDir(childPath) then
+			return ensureFileDirectoryInstance(childPath)
+		end
+
+		return nil
+	end
+
+	ensureFileModuleInstance = function(modulePath: string)
+		modulePath = paths.normalizeFilesystemPath(modulePath)
+
+		local cached = fileModuleInstanceCache[modulePath]
+
+		if cached ~= nil then
+			return cached
+		end
+
+		local sourceFilePath = paths.resolveExistingSourceFile(modulePath)
+		assert(sourceFilePath ~= nil, `missing module source for {modulePath}`)
+
+		local parentDirectory = ensureFileDirectoryInstance(paths.dirname(modulePath))
+		local instance = createInstance(nameFromPath(modulePath), "ModuleScript", parentDirectory)
+		instance._fileModulePath = modulePath
+
+		if fs.isDir(modulePath) then
+			instance._filesystemDirectoryPath = modulePath
+			instance._childResolver = resolveFilesystemChild
+		end
+
+		fileModuleInstanceCache[modulePath] = instance
+
+		return instance
+	end
+
 	local function modulePathFromInstance(instance): string
+		local fileModulePath = rawget(instance, "_fileModulePath")
+
+		if fileModulePath ~= nil then
+			return fileModulePath
+		end
+
 		local parts = {}
 		local node = instance
 
@@ -551,6 +695,20 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 
 			table.insert(parts, 1, node.Name)
 			node = node.Parent
+		end
+
+		if parts[1] == game.Name then
+			table.remove(parts, 1)
+		end
+
+		local specialMountPath = getSpecialMountPathFromInstanceParts(parts)
+
+		if specialMountPath ~= nil then
+			local specialModuleFilePath = resolveMountedVirtualPathToFilePath(manifestMounts, specialMountPath)
+
+			if specialModuleFilePath ~= nil then
+				return specialModuleFilePath
+			end
 		end
 
 		error("Instance is not under a mounted service: " .. tostring(instance))
@@ -608,6 +766,10 @@ function sandboxModule.create(manifestMounts, runtimeConfig)
 		end
 
 		setfenv(moduleChunk, sandboxGlobals)
+
+		if scriptInstance == nil then
+			scriptInstance = ensureFileModuleInstance(modulePath)
+		end
 
 		local oldScript = sandboxGlobals.script
 		local oldCurrentFilePath = sandboxGlobals.__currentFilePath
